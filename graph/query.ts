@@ -6,8 +6,8 @@ import * as Models from "../../../app/models/.boot"
 import Controller from "./controller";
 import {Request, Response} from "../index";
 import {Sequelize} from "sequelize";
-import {runtimeError} from "avanda-error";
-import {Model} from "avanda-orm";
+import {runtimeError} from "@avanda/error";
+import {Model} from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";

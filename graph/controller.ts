@@ -1,6 +1,6 @@
 import Request from "../request";
 import Response from "../response";
-import { Model } from "avanda-orm";
+import { Model } from "@avanda/orm";
 import { Sequelize } from "sequelize";
 
 type AllowedMethods = 'any' | 'get' | 'post' | 'option'
