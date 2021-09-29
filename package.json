@@ -1,0 +1,31 @@
+{
+  "name": "avanda-http",
+  "version": "1.0.5",
+  "description": "Avanda http module ",
+  "main": "index.ts",
+  "author": "Wharley01",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "dev": "nodemon"
+  },
+  "dependencies": {
+    "avanda-error": "file:../error",
+    "avanda-orm": "file:../orm",
+    "body-parser": "^1.19.0",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "sequelize": "^6.6.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.12",
+    "@types/debug": "^4.1.7",
+    "@types/express": "^4.17.13",
+    "@types/node": "^16.4.13",
+    "nodemon": "^2.0.12",
+    "source-map-support": "^0.5.19",
+    "ts-node": "^10.2.0",
+    "tslint": "^6.1.3",
+    "typescript": "^4.3.5"
+  }
+}
