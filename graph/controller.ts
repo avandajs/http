@@ -5,9 +5,9 @@ import { Sequelize } from "sequelize";
 
 type AllowedMethods = 'any' | 'get' | 'post' | 'option'
 export default abstract class Controller{
-    model?: Model
+    protected model?: Model | any
     connection: Sequelize
-    constructor(connection: Sequelize,model: Model | null = null, autolink: boolean =  false) {
+    protected constructor(connection: Sequelize, model: Model | null = null, autolink: boolean =  false) {
         this.connection = connection;
         if (model){
             this.model = model;
