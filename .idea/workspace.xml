@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="b3646f75-12b5-461a-b99f-028ee6e701ec" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/verbs/delete.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/verbs/option.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/graph/controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/graph/controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/graph/query.ts" beforeDir="false" afterPath="$PROJECT_DIR$/graph/query.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/middleware/validate.ts" beforeDir="false" afterPath="$PROJECT_DIR$/middleware/validate.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/request.ts" beforeDir="false" afterPath="$PROJECT_DIR$/request.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/tsconfig.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verbs/get.ts" beforeDir="false" afterPath="$PROJECT_DIR$/verbs/get.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verbs/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/verbs/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verbs/post.ts" beforeDir="false" afterPath="$PROJECT_DIR$/verbs/post.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verbs/verb.ts" beforeDir="false" afterPath="$PROJECT_DIR$/verbs/verb.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectId" id="1zFUBR1fGJlmcSxZpt0Y3MFvxQn" />
+  <component name="ProjectViewState">
+    <option name="compactDirectories" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="false" />
+    <option name="showLibraryContents" value="true" />
+    <option name="showMembers" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="vue.rearranger.settings.migration" value="true" />
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="b3646f75-12b5-461a-b99f-028ee6e701ec" name="Changes" comment="" />
+      <created>1633743194700</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1633743194700</updated>
+      <workItem from="1633743197662" duration="3000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
