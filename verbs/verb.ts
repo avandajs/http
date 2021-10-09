@@ -15,7 +15,11 @@ export default function (middlewares: Middleware[],method: string){
 
             if (request.method.toLowerCase() !== method) {//invalid request
                 return function (...args: any){
-                    return response.error('Bad request type',400)
+                    return response.error('Bad request type',500)
+                }
+            }else if (request.method.toLowerCase() == 'options'){
+                return function (...args: any){
+                    return response.success('Preflight',200)
                 }
             }
             //check for middlewares validity
