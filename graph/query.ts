@@ -1,8 +1,7 @@
 import express, {Express} from "express"
 import * as bodyParser from "body-parser"
+import cors from "cors"
 
-import * as Services from "../../../app/controllers/.boot"
-import * as Models from "../../../app/models/.boot"
 import Controller from "./controller";
 import {Request, Response} from "../index";
 import {Sequelize} from "sequelize";
@@ -11,7 +10,7 @@ import {Model} from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
-
+import {snakeCase} from "lodash";
 
 /*
  *
@@ -28,20 +27,37 @@ export default class Query {
     app: Express = express();
     port: number = 8080;
     path: string = '/';
+    autoLink?: boolean;
     connection: Sequelize;
+    models: {[model: string]: any} = {}
+    controllers: {[model: string]: any} = {}
 
     constructor(connection: Sequelize) {
         this.connection = connection;
         return this;
     }
 
-    async execute(path: string = '/', port: number = 8080) {
+    async execute(
+        models: {[k: string]: any},
+        controllers: {[k: string]: any},
+        ) {
+        this.models = models
+        this.controllers = controllers
 
-        this.port = port
-        this.path = path
+        this.port = 8080
+        this.path = '/'
         this.app.use(bodyParser.urlencoded({ extended: true }));
         this.app.use(bodyParser.json());
         this.app.use(bodyParser.raw());
+
+        this.app.use(cors({
+            origin: function(origin, callback){
+                if(!origin) return callback(null, true);
+                return callback(null, true);
+            }
+
+        }));
+
         this.app.all(this.path, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
             if (query) {
@@ -53,12 +69,12 @@ export default class Query {
                         res
                     )
                     if (response instanceof Response) {
-                        res.status(parseInt(response.status_code as unknown as string))
-                        res.json({
+                        res.status(parseInt(response.status_code as unknown as string)).json({
                             msg: response.message,
                             data: response.data,
                             status_code: response.status_code,
                         })
+                        return;
                     } else {
                         res.json({
                             msg: 'Auto-generated message',
@@ -77,10 +93,15 @@ export default class Query {
         })
     }
 
-    private async extractNeededDataFromArray(data: any[] | Datum<any>, columns: Array<string | Service>, req: express.Request, res: express.Response): Promise<any[] | Datum<any>> {
-        let ret: any[] | Datum<any> = []
+    private async extractNeededDataFromArray(
+        data: any[] | Datum<any>,
+        columns: Array<string | Service>,
+        req: express.Request,
+        res: express.Response,
+        rootService: Service
+    ): Promise<any[] | Datum<any>> {
 
-        console.log({data})
+        let ret: any[] | Datum<any> = []
 
         if (Array.isArray(data)) {
             for (let index in data) {
@@ -100,7 +121,7 @@ export default class Query {
                             } else {
                                 let service = col;
                                 col = col.a ? col.a : col.n.toLowerCase()
-                                datum[col] = await this.generateResponse(service, req, res, false,data[index])
+                                datum[col] = await this.generateResponse(service, req, res, false,data[index],rootService)
                                 //    await this.generateResponse(service, req, res,false)
                                 //    process the sub-service here
                             }
@@ -112,12 +133,12 @@ export default class Query {
                         datum = data[index];
                     }
 
-                } else {
+                }
+                else {
                     //    item in this array is not object
                     datum = data[index]
                 }
 
-                // console.log({datum})
                 ret.push(datum)
             }
         }
@@ -129,7 +150,7 @@ export default class Query {
                         let column = typeof service == 'string' ? service : service.n;
                         datum[column] = data ? (data[column] || null) : null;
                     } else {
-                        datum[service.a ? service.a : service.n.toLowerCase()] = await this.generateResponse(service, req, res, false, data)
+                        datum[service.a ? service.a : service.n.toLowerCase()] = await this.generateResponse(service, req, res, false, data, rootService)
                     }
                 }
             }else{
@@ -146,25 +167,31 @@ export default class Query {
         req: express.Request,
         res: express.Response,
         isRoot: boolean = true,
-        parentData?: Datum<any>
+        parentData?: Datum<any>,
+        parentService?: Service
     ): Promise<Response | any> {
+
         let name = query.n;
         let type = query.t;
         let children = query.c;
 
+        if (isRoot){//get root autolink state
+            this.autoLink = query.al;
+        }
         let data: Datum<any> = {};
         let columns: string[] = [];
-        if (!(name in Services)) {
+        if (!(name in this.controllers)) {
             throw new runtimeError('Invalid controller name: ' + name)
         }
 
         let controllerResponse = await this.getServiceFncResponse(
-            (Services as any)[name],
+            this.controllers[name],
             req,
             res,
             name,
             query,
-            parentData
+            parentData,
+            parentService
         )
 
         if (typeof controllerResponse == 'function' && !(controllerResponse instanceof Response))
@@ -184,7 +211,7 @@ export default class Query {
 
 
         if (children) {
-            data = await this.extractNeededDataFromArray(controllerData, children, req, res);
+            data = await this.extractNeededDataFromArray(controllerData, children, req, res, query);
             //
         }
 
@@ -201,7 +228,8 @@ export default class Query {
         res: express.Response,
         serviceName: string,
         service: Service,
-        parentData?: Datum<any>
+        parentData?: Datum<any>,
+        parentService?: Service,
     ): Promise<Response | any> {
         // get Controller's specified function
         // initiate controller
@@ -212,16 +240,27 @@ export default class Query {
         request.data = req.body
         request.args = parentData
 
-        if (serviceName in Models){
+        if (this.models && (serviceName in this.models)){
 
-            model = new (Models as any)[serviceName](this.connection) as Model;
-            if (service.al) {//auto-link enabled
-                //
-                console.log('Auto link enabled')
+            model = new this.models[serviceName](this.connection);
 
-                console.log({pd: JSON.stringify(parentData)})
+            if (this.autoLink && parentData) {//auto-link enabled
+                //find secondary key in parent data
 
+                let sec_key = snakeCase(parentService.n) + '_id'
+
+                if (typeof parentData[sec_key] != 'undefined'){
+                //    parent has 1 to 1 relationship
+                    model.where({id: parentData[sec_key]})
+                }else{
+                    // Parent has 1 to many relationship
+                    if (typeof parentData['id'] == 'undefined'){
+                        throw new runtimeError(`${parentService.n} does not return property "id" to link ${service.n}'s secondary key ${sec_key} with`)
+                    }
+                    model.where({[sec_key]: parentData['id']})
+                }
             }
+
             if (service.ft){
                 //apply filters
                 model = Query.bindFilters(model,service.ft)
@@ -229,9 +268,7 @@ export default class Query {
 
         }
 
-        let ctr = new controller(this.connection, model)
-
-        return await (ctr as any)[fnc](new Response(), request);
+        return await new controller(this.connection, model)[fnc](new Response(), request);
     }
 
     private static bindFilters(model: Model, filters: Filters): Model {
@@ -245,6 +282,9 @@ export default class Query {
             },
             "==": (key: string, value: any, model: Model) => {
                 model.whereRaw(`${key} = ${value}`);
+            },
+            "=": (key: string, value: any, model: Model) => {
+                operators['=='](key,value,model)
             },
             "!=": (key: string, value: any, model: Model) => {
                 model.whereRaw(`${key} != ${value}`);
@@ -269,6 +309,7 @@ export default class Query {
             let filter = filters[key];
             let value = filter.vl ?? null;
             let operator = filter.op;
+
             operators[operator](key, value, model);
         }
 
