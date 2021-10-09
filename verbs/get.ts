@@ -1,6 +1,6 @@
 import {Middleware} from "../middleware";
-import verbe from "./verb";
+import verb from "./verb";
 
-export default function (...middlewares: Middleware[]){
-    return verbe(middlewares,'get')
+export default function (...middlewares: Middleware[]): any{
+    return verb(middlewares,'get')
 }
