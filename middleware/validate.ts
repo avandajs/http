@@ -1,4 +1,4 @@
-import {Middleware} from "./";
+import {Middleware} from "./index";
 import Response from "../response";
 import Request from "../request";
 
