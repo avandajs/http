@@ -20,4 +20,3 @@ const delete_1 = __importDefault(require("./verbs/delete"));
 exports.Delete = delete_1.default;
 const option_1 = __importDefault(require("./verbs/option"));
 exports.Option = option_1.default;
-//# sourceMappingURL=index.js.map

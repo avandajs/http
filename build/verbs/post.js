@@ -8,4 +8,3 @@ function default_1(...middlewares) {
     return (0, verb_1.default)(middlewares, 'post');
 }
 exports.default = default_1;
-//# sourceMappingURL=post.js.map

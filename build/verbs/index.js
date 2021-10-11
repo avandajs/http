@@ -8,4 +8,3 @@ const get_1 = __importDefault(require("./get"));
 exports.get = get_1.default;
 const post_1 = __importDefault(require("./post"));
 exports.post = post_1.default;
-//# sourceMappingURL=index.js.map

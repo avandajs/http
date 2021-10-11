@@ -19,4 +19,3 @@ class Request {
     }
 }
 exports.default = Request;
-//# sourceMappingURL=request.js.map

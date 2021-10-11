@@ -8,4 +8,3 @@ function default_1(...middlewares) {
     return (0, verb_1.default)(middlewares, 'get');
 }
 exports.default = default_1;
-//# sourceMappingURL=get.js.map

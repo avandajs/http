@@ -29,6 +29,11 @@ class Controller {
             return (yield ((_a = this.model) === null || _a === void 0 ? void 0 : _a.all()));
         });
     }
+    add(response, request) {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            return response.success("New data added", yield ((_a = this.model) === null || _a === void 0 ? void 0 : _a.create(request.getData())));
+        });
+    }
 }
 exports.default = Controller;
-//# sourceMappingURL=controller.js.map

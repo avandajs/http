@@ -8,4 +8,3 @@ function default_1(...middlewares) {
     return (0, verb_1.default)(middlewares, 'delete');
 }
 exports.default = default_1;
-//# sourceMappingURL=delete.js.map

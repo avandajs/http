@@ -1,5 +1,6 @@
 import express, {Express} from "express"
 import * as bodyParser from "body-parser"
+import multer from "multer";
 import cors from "cors"
 
 import Controller from "./controller";
@@ -44,12 +45,14 @@ export default class Query {
         models: {[k: string]: any},
         controllers: {[k: string]: any},
         ): Promise<this> {
+        const forms = multer();
+
         this.models = models
         this.controllers = controllers
 
-        this.app.use(bodyParser.urlencoded({ extended: true }));
         this.app.use(bodyParser.json());
-        this.app.use(bodyParser.raw());
+        this.app.use(forms.any());
+        this.app.use(bodyParser.urlencoded({ extended: true }));
 
         this.app.use(cors({
             origin: function(origin, callback){
@@ -69,8 +72,10 @@ export default class Query {
                         req,
                         res
                     )
+                    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization')
                     if (response instanceof Response) {
-                        res.status(parseInt(response.status_code as unknown as string)).json({
+                        res.status(parseInt(response.status_code as unknown as string))
+                        res.json({
                             msg: response.message,
                             data: response.data,
                             status_code: response.status_code,
@@ -139,7 +144,6 @@ export default class Query {
                             } else {
                                 let service = col;
                                 col = col.a ? col.a : col.n.toLowerCase()
-                                console.log({col,service,di: data[index]})
                                 datum[col] = await this.generateResponse(service, req, res, false,data[index],rootService)
                                 //    await this.generateResponse(service, req, res,false)
                                 //    process the sub-service here
@@ -197,7 +201,7 @@ export default class Query {
         if (isRoot){//get root autolink state
             this.autoLink = query.al;
         }
-        let data: Datum<any> = {};
+        let data: Datum<any> | null = null;
         let columns: string[] = [];
         if (!(name in this.controllers)) {
             throw new runtimeError('Invalid controller name: ' + name)
@@ -230,10 +234,7 @@ export default class Query {
         let controllerData: any = controllerResponse instanceof Response ? await controllerResponse.data : await controllerResponse
 
 
-        console.log({controllerData})
-
-
-        if (children) {
+        if (children && controllerData) {//
             data = await this.extractNeededDataFromArray(controllerData, children, req, res, query);
             //
         }
@@ -242,7 +243,6 @@ export default class Query {
             controllerResponse.data = data;
             return controllerResponse;
         }
-        console.log({data})
         return data;
     }
 
@@ -262,6 +262,8 @@ export default class Query {
         let model: Model | null = null;
         let request = new Request(req, res)
         request.data = req.body
+
+        console.log({p_data: req})
         request.args = parentData
 
         if (this.models && (serviceName in this.models)){

@@ -37,4 +37,3 @@ function default_1(middlewares, method) {
     };
 }
 exports.default = default_1;
-//# sourceMappingURL=verb.js.map

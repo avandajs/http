@@ -33,6 +33,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const bodyParser = __importStar(require("body-parser"));
+const multer_1 = __importDefault(require("multer"));
 const cors_1 = __importDefault(require("cors"));
 const index_1 = require("../index");
 const error_1 = require("@avanda/error");
@@ -59,11 +60,12 @@ class Query {
     }
     execute(models, controllers) {
         return __awaiter(this, void 0, void 0, function* () {
+            const forms = (0, multer_1.default)();
             this.models = models;
             this.controllers = controllers;
-            this.app.use(bodyParser.urlencoded({ extended: true }));
             this.app.use(bodyParser.json());
-            this.app.use(bodyParser.raw());
+            this.app.use(forms.any());
+            this.app.use(bodyParser.urlencoded({ extended: true }));
             this.app.use((0, cors_1.default)({
                 origin: function (origin, callback) {
                     if (!origin)
@@ -77,8 +79,10 @@ class Query {
                     query = JSON.parse(query);
                     if (query) {
                         let response = yield this.generateResponse(query, req, res);
+                        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization');
                         if (response instanceof index_1.Response) {
-                            res.status(parseInt(response.status_code)).json({
+                            res.status(parseInt(response.status_code));
+                            res.json({
                                 msg: response.message,
                                 data: response.data,
                                 status_code: response.status_code,
@@ -132,7 +136,6 @@ class Query {
                                 else {
                                     let service = col;
                                     col = col.a ? col.a : col.n.toLowerCase();
-                                    console.log({ col, service, di: data[index] });
                                     datum[col] = yield this.generateResponse(service, req, res, false, data[index], rootService);
                                     //    await this.generateResponse(service, req, res,false)
                                     //    process the sub-service here
@@ -180,7 +183,7 @@ class Query {
             if (isRoot) { //get root autolink state
                 this.autoLink = query.al;
             }
-            let data = {};
+            let data = null;
             let columns = [];
             if (!(name in this.controllers)) {
                 throw new error_1.runtimeError('Invalid controller name: ' + name);
@@ -198,8 +201,7 @@ class Query {
                 return controllerResponse;
             }
             let controllerData = controllerResponse instanceof index_1.Response ? yield controllerResponse.data : yield controllerResponse;
-            console.log({ controllerData });
-            if (children) {
+            if (children && controllerData) { //
                 data = yield this.extractNeededDataFromArray(controllerData, children, req, res, query);
                 //
             }
@@ -207,7 +209,6 @@ class Query {
                 controllerResponse.data = data;
                 return controllerResponse;
             }
-            console.log({ data });
             return data;
         });
     }
@@ -219,6 +220,7 @@ class Query {
             let model = null;
             let request = new index_1.Request(req, res);
             request.data = req.body;
+            console.log({ p_data: req });
             request.args = parentData;
             if (this.models && (serviceName in this.models)) {
                 model = new this.models[serviceName](yield this.connection);
@@ -291,4 +293,3 @@ class Query {
     }
 }
 exports.default = Query;
-//# sourceMappingURL=query.js.map

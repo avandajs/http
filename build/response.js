@@ -23,4 +23,3 @@ class Response {
     }
 }
 exports.default = Response;
-//# sourceMappingURL=response.js.map
