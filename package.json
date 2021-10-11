@@ -1,6 +1,6 @@
 {
   "name": "@avanda/http",
-  "version": "0.1.12",
+  "version": "0.1.16",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",
@@ -14,6 +14,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@avanda/app": "^0.10.3",
     "@avanda/core": "0.0.7",
     "@avanda/error": "^0.2.0",
     "@avanda/orm": "0.0.3",

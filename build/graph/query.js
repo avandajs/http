@@ -46,21 +46,21 @@ const lodash_1 = require("lodash");
  *
  * */
 class Query {
-    constructor(connection) {
+    constructor(serverConfig) {
         this.app = (0, express_1.default)();
         this.port = 8080;
         this.path = '/';
         this.models = {};
         this.controllers = {};
-        this.connection = connection;
+        this.connection = serverConfig.connection;
+        this.port = parseInt(serverConfig.port);
+        this.path = serverConfig.rootPath;
         return this;
     }
     execute(models, controllers) {
         return __awaiter(this, void 0, void 0, function* () {
             this.models = models;
             this.controllers = controllers;
-            this.port = 8080;
-            this.path = '/';
             this.app.use(bodyParser.urlencoded({ extended: true }));
             this.app.use(bodyParser.json());
             this.app.use(bodyParser.raw());
@@ -78,14 +78,6 @@ class Query {
                     if (query) {
                         let response = yield this.generateResponse(query, req, res);
                         if (response instanceof index_1.Response) {
-                            res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
-                            // Request methods you wish to allow
-                            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-                            // Request headers you wish to allow
-                            res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-                            // Set to true if you need the website to include cookies in the requests sent
-                            // to the API (e.g. in case you use sessions)
-                            res.setHeader('Access-Control-Allow-Credentials', 1);
                             res.status(parseInt(response.status_code)).json({
                                 msg: response.message,
                                 data: response.data,
@@ -105,10 +97,19 @@ class Query {
                 }
                 res.send('Hello World!');
             }));
-            this.app.listen(this.port, () => {
-                console.log(`app listening at http://localhost:${this.port}`);
-            });
+            return this;
         });
+    }
+    getServerInstance() {
+        return this.app;
+    }
+    listen() {
+        if (!this.app)
+            throw new error_1.runtimeError('Execute before you listen');
+        this.app.listen(this.port, () => {
+            console.log(`app listening at http://localhost:${this.port}`);
+        });
+        return this.app;
     }
     extractNeededDataFromArray(data, columns, req, res, rootService) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -123,6 +124,7 @@ class Query {
                             for (let col of columns) {
                                 if (typeof col == 'string' || (col.t && col.t == 'c')) {
                                     col = typeof col == 'string' ? col : col.n;
+                                    data[index] = JSON.parse(JSON.stringify(data[index]));
                                     if (col in data[index]) {
                                         datum[col] = data[index][col];
                                     }
@@ -130,6 +132,7 @@ class Query {
                                 else {
                                     let service = col;
                                     col = col.a ? col.a : col.n.toLowerCase();
+                                    console.log({ col, service, di: data[index] });
                                     datum[col] = yield this.generateResponse(service, req, res, false, data[index], rootService);
                                     //    await this.generateResponse(service, req, res,false)
                                     //    process the sub-service here
@@ -185,15 +188,17 @@ class Query {
             let controllerResponse = yield this.getServiceFncResponse(this.controllers[name], req, res, name, query, parentData, parentService);
             if (typeof controllerResponse == 'function' && !(controllerResponse instanceof index_1.Response))
                 //will be function if returned from middleware decorator
-                controllerResponse = new controllerResponse();
+                controllerResponse = yield new controllerResponse();
             //
-            if (!(controllerResponse instanceof index_1.Response) && isRoot)
+            if (!(controllerResponse instanceof index_1.Response) && isRoot) {
                 //convert raw returned data to response for the root
-                controllerResponse = (new index_1.Response()).success('', controllerResponse);
+                controllerResponse = yield (new index_1.Response()).success('', controllerResponse);
+            }
             if (isRoot && controllerResponse.status_code > 299) { //if is root, and response doesn't look success, return the root response only
                 return controllerResponse;
             }
-            let controllerData = controllerResponse instanceof index_1.Response ? controllerResponse.data : controllerResponse;
+            let controllerData = controllerResponse instanceof index_1.Response ? yield controllerResponse.data : yield controllerResponse;
+            console.log({ controllerData });
             if (children) {
                 data = yield this.extractNeededDataFromArray(controllerData, children, req, res, query);
                 //
@@ -202,6 +207,7 @@ class Query {
                 controllerResponse.data = data;
                 return controllerResponse;
             }
+            console.log({ data });
             return data;
         });
     }
@@ -215,7 +221,8 @@ class Query {
             request.data = req.body;
             request.args = parentData;
             if (this.models && (serviceName in this.models)) {
-                model = new this.models[serviceName](this.connection);
+                model = new this.models[serviceName](yield this.connection);
+                console.log({ autoLink: this.autoLink });
                 if (this.autoLink && parentData) { //auto-link enabled
                     //find secondary key in parent data
                     let sec_key = (0, lodash_1.snakeCase)(parentService.n) + '_id';
@@ -236,7 +243,7 @@ class Query {
                     model = Query.bindFilters(model, service.ft);
                 }
             }
-            return yield new controller(this.connection, model)[fnc](new index_1.Response(), request);
+            return yield new controller(yield this.connection, model)[fnc](new index_1.Response(), request);
         });
     }
     static bindFilters(model, filters) {

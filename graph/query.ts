@@ -11,6 +11,7 @@ import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
 import {snakeCase} from "lodash";
+import {serverConfig} from "@avanda/app";
 
 /*
  *
@@ -28,24 +29,24 @@ export default class Query {
     port: number = 8080;
     path: string = '/';
     autoLink?: boolean;
-    connection: Sequelize;
+    connection: Promise<Sequelize> | Sequelize;
     models: {[model: string]: any} = {}
     controllers: {[model: string]: any} = {}
 
-    constructor(connection: Sequelize) {
-        this.connection = connection;
+    constructor(serverConfig: serverConfig) {
+        this.connection = serverConfig.connection;
+        this.port = parseInt(serverConfig.port as string)
+        this.path = serverConfig.rootPath
         return this;
     }
 
     async execute(
         models: {[k: string]: any},
         controllers: {[k: string]: any},
-        ) {
+        ): Promise<this> {
         this.models = models
         this.controllers = controllers
 
-        this.port = 8080
-        this.path = '/'
         this.app.use(bodyParser.urlencoded({ extended: true }));
         this.app.use(bodyParser.json());
         this.app.use(bodyParser.raw());
@@ -88,9 +89,23 @@ export default class Query {
             res.send('Hello World!')
         })
 
+        return this
+    }
+
+    public getServerInstance(): Express{
+        return this.app
+    }
+
+    public listen(){
+
+        if (!this.app)
+            throw new runtimeError('Execute before you listen')
+
         this.app.listen(this.port, () => {
             console.log(`app listening at http://localhost:${this.port}`)
         })
+
+        return this.app
     }
 
     private async extractNeededDataFromArray(
@@ -113,14 +128,18 @@ export default class Query {
 
                     if (columns.length){
                         for (let col of columns) {
+
                             if (typeof col == 'string' || (col.t && col.t == 'c')) {
                                 col = typeof col == 'string' ? col : col.n;
+                                data[index] = JSON.parse(JSON.stringify(data[index]))
+
                                 if (col in data[index]) {
                                     datum[col] = data[index][col]
                                 }
                             } else {
                                 let service = col;
                                 col = col.a ? col.a : col.n.toLowerCase()
+                                console.log({col,service,di: data[index]})
                                 datum[col] = await this.generateResponse(service, req, res, false,data[index],rootService)
                                 //    await this.generateResponse(service, req, res,false)
                                 //    process the sub-service here
@@ -196,18 +215,22 @@ export default class Query {
 
         if (typeof controllerResponse == 'function' && !(controllerResponse instanceof Response))
             //will be function if returned from middleware decorator
-            controllerResponse = new controllerResponse()
+            controllerResponse = await new controllerResponse()
 
         //
 
-        if (!(controllerResponse instanceof Response) && isRoot)
+        if (!(controllerResponse instanceof Response) && isRoot) {
             //convert raw returned data to response for the root
-            controllerResponse = (new Response()).success<any>('', controllerResponse)
+            controllerResponse = await (new Response()).success<any>('', controllerResponse)
+        }
 
         if (isRoot && controllerResponse.status_code > 299) {//if is root, and response doesn't look success, return the root response only
             return controllerResponse;
         }
-        let controllerData: any = controllerResponse instanceof Response ? controllerResponse.data : controllerResponse
+        let controllerData: any = controllerResponse instanceof Response ? await controllerResponse.data : await controllerResponse
+
+
+        console.log({controllerData})
 
 
         if (children) {
@@ -219,6 +242,7 @@ export default class Query {
             controllerResponse.data = data;
             return controllerResponse;
         }
+        console.log({data})
         return data;
     }
 
@@ -242,7 +266,9 @@ export default class Query {
 
         if (this.models && (serviceName in this.models)){
 
-            model = new this.models[serviceName](this.connection);
+            model = new this.models[serviceName](await this.connection);
+
+            console.log({autoLink: this.autoLink})
 
             if (this.autoLink && parentData) {//auto-link enabled
                 //find secondary key in parent data
@@ -265,10 +291,9 @@ export default class Query {
                 //apply filters
                 model = Query.bindFilters(model,service.ft)
             }
-
         }
 
-        return await new controller(this.connection, model)[fnc](new Response(), request);
+        return await new controller(await this.connection, model)[fnc](new Response(), request);
     }
 
     private static bindFilters(model: Model, filters: Filters): Model {
