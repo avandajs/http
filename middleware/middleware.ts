@@ -2,6 +2,8 @@ import Response from "../response";
 import Request from "../request";
 
 export default interface Middleware {
-    validate: (res: Response, req: Request) => boolean;
-    onFailure: (res: Response,req: Request) => Response;
+
+    validate?: (req: Request) => boolean;
+    boot?: (res: Response, req: Request) => boolean | Response;
+    onFailure?: (res: Response,req: Request) => Response;
 }

@@ -6,13 +6,28 @@ export default function (middlewares: Middleware[], res: Response, req: Request)
     for (let index in middlewares){
         let middleware = middlewares[index];
 
-        if (!middleware.validate(res,req)){
-            let middlewareResponse = middleware.onFailure(res,req);
+        if (typeof middleware.boot == 'function'){
+            let boot = middleware.boot(res,req)
 
-            if (middlewareResponse.status_code < 300)
-                middlewareResponse.status_code = 401;
+            if (boot instanceof Response){
+                return boot;
+            }
+            return null
+        }
 
-            return middlewareResponse;
+        if (typeof middleware.validate == 'function'  && !middleware.validate(req)){
+
+            if (typeof middleware.onFailure == 'function'){
+                let middlewareResponse = middleware.onFailure(res,req);
+
+                if (middlewareResponse.status_code < 300)
+                    middlewareResponse.status_code = 401;
+
+                return middlewareResponse;
+            }else{
+                return (new Response()).error(`${index} failed but has no onFailure method response`)
+            }
+
         }
     }
     return null
