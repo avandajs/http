@@ -21,7 +21,4 @@ export default abstract class Controller{
     async getAll(response: Response,request: Request) {
         return (await this.model?.all())
     }
-    async add(response: Response,request: Request) {
-        return response.success("New data added",await this.model?.create(request.getData()))
-    }
 }
