@@ -1,6 +1,6 @@
 import express, {Express} from "express"
 import * as bodyParser from "body-parser"
-import multer from "multer";
+import fileUpload from "express-fileupload";
 import cors from "cors"
 
 import Controller from "./controller";
@@ -33,11 +33,14 @@ export default class Query {
     connection: Promise<Sequelize> | Sequelize;
     models: {[model: string]: any} = {}
     controllers: {[model: string]: any} = {}
+    serverConfig: serverConfig
 
     constructor(serverConfig: serverConfig) {
+        this.serverConfig = serverConfig
         this.connection = serverConfig.connection;
         this.port = parseInt(serverConfig.port as string)
         this.path = serverConfig.rootPath
+
         return this;
     }
 
@@ -45,22 +48,26 @@ export default class Query {
         models: {[k: string]: any},
         controllers: {[k: string]: any},
         ): Promise<this> {
-        const forms = multer();
-
         this.models = models
         this.controllers = controllers
 
         this.app.use(bodyParser.json());
-        this.app.use(forms.any());
         this.app.use(bodyParser.urlencoded({ extended: true }));
-
         this.app.use(cors({
-            origin: function(origin, callback){
-                if(!origin) return callback(null, true);
-                return callback(null, true);
+            credentials: true,
+            origin:(origin, callback) => {
+                if (this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                    callback(null, true)
+                } else {
+                    callback(new Error('Not allowed by CORS'))
+                }
             }
 
         }));
+        this.app.use(fileUpload({
+            useTempFiles: true
+        }));
+
 
         this.app.all(this.path, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
@@ -262,15 +269,12 @@ export default class Query {
         let model: Model | null = null;
         let request = new Request(req, res)
         request.data = req.body
-
-        console.log({p_data: req})
+        request.files = req.files
         request.args = parentData
 
         if (this.models && (serviceName in this.models)){
 
             model = new this.models[serviceName](await this.connection);
-
-            console.log({autoLink: this.autoLink})
 
             if (this.autoLink && parentData) {//auto-link enabled
                 //find secondary key in parent data
