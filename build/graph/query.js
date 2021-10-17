@@ -33,7 +33,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const bodyParser = __importStar(require("body-parser"));
-const multer_1 = __importDefault(require("multer"));
+const express_fileupload_1 = __importDefault(require("express-fileupload"));
 const cors_1 = __importDefault(require("cors"));
 const index_1 = require("../index");
 const error_1 = require("@avanda/error");
@@ -53,6 +53,7 @@ class Query {
         this.path = '/';
         this.models = {};
         this.controllers = {};
+        this.serverConfig = serverConfig;
         this.connection = serverConfig.connection;
         this.port = parseInt(serverConfig.port);
         this.path = serverConfig.rootPath;
@@ -60,18 +61,23 @@ class Query {
     }
     execute(models, controllers) {
         return __awaiter(this, void 0, void 0, function* () {
-            const forms = (0, multer_1.default)();
             this.models = models;
             this.controllers = controllers;
             this.app.use(bodyParser.json());
-            this.app.use(forms.any());
             this.app.use(bodyParser.urlencoded({ extended: true }));
             this.app.use((0, cors_1.default)({
-                origin: function (origin, callback) {
-                    if (!origin)
-                        return callback(null, true);
-                    return callback(null, true);
+                credentials: true,
+                origin: (origin, callback) => {
+                    if (this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                        callback(null, true);
+                    }
+                    else {
+                        callback(new Error('Not allowed by CORS'));
+                    }
                 }
+            }));
+            this.app.use((0, express_fileupload_1.default)({
+                useTempFiles: true
             }));
             this.app.all(this.path, (req, res) => __awaiter(this, void 0, void 0, function* () {
                 let query = req.query.query;
@@ -220,11 +226,10 @@ class Query {
             let model = null;
             let request = new index_1.Request(req, res);
             request.data = req.body;
-            console.log({ p_data: req });
+            request.files = req.files;
             request.args = parentData;
             if (this.models && (serviceName in this.models)) {
                 model = new this.models[serviceName](yield this.connection);
-                console.log({ autoLink: this.autoLink });
                 if (this.autoLink && parentData) { //auto-link enabled
                     //find secondary key in parent data
                     let sec_key = (0, lodash_1.snakeCase)(parentService.n) + '_id';
