@@ -9,7 +9,7 @@ export default function (middlewares: Middleware[],method: string){
 
         const originalMethod = descriptor.value;
 
-        descriptor.value = function (...args: any) {
+        descriptor.value = async function (...args: any) {
             let request = args[1] as Request
             let response = args[0] as Response
 
@@ -23,7 +23,7 @@ export default function (middlewares: Middleware[],method: string){
                 }
             }
             //check for middlewares validity
-            let middlewareCheck = validate(middlewares,response,request)
+            let middlewareCheck = await validate(middlewares,response,request)
             if (middlewareCheck !== null){
                 return function (...args: any){
                     return middlewareCheck
