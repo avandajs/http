@@ -1,51 +1,137 @@
 import express from "express";
 import Datum from "./types/Datum";
-import {Schema} from "@avanda/app"
-import {UploadedFile} from "express-fileupload";
-import Joi from "joi";
+import {Validator} from "@avanda/app"
 import Response from "./response";
+import axios, {AxiosResponse} from "axios";
+import UploadedFile from "./types/UploadedFile";
 
-type Rules = {
-    [key: string]: Joi.AnySchema
-}
 
 export default class Request{
     method: string;
+    page: number;
     args?: Datum<any>
+    attrs?: Datum<any> = {}
     params?: Datum<any>
     data?: Datum<any>
     files?:  {[index: string]: UploadedFile | UploadedFile[]}
     query?: Datum<any>
     columns?: Datum<any>
-    constructor(expressReq: express.Request,expressRes: express.Response) {
-        this.method = expressReq.method;
-        // this.data = expressReq.
+    headers?: Datum<any>
+
+    constructor() {
     }
-    getFiles(key: string): UploadedFile | UploadedFile[] | undefined{
-        return this.files?.[key]
+    getFiles(key: string): UploadedFile[] | undefined{
+        let files = this.files?.[key];
+
+        if (!Array.isArray(files))
+            return [files]
+
+        return files
     }
     getFile(key: string): UploadedFile | undefined{
+        console.log({files: this.files})
         let files = this.files?.[key];
         if (Array.isArray(files))
             return files[0]
         else
             return files
     }
-    getData<R>(key?: string): R | Datum<any>{
-        return key ? this.data?.[key] : this.data
+    getData<R>(key: string): R | null{
+        return key ? (this.data?.[key] ?? null) : null
     }
-    getArgs<R>(key?: string): R | Datum<any>{
-        return key ? this.args?.[key] : this.args
+    setData(data: Datum<any>): this{
+        this.data = data
+        return this;
     }
-    getParams<R>(key?: string): R | Datum<any>{
-        return key ? this.params?.[key] : this.params
+    setHeaders(headers: Datum<any>): this{
+        this.headers = headers
+        return this;
     }
-    validate(schemaRules: (schema: Joi.Root) => Rules){
-        let schema =  (new Schema(schemaRules)).validate(this.data)
+    setQuery(query: Datum<any>): this{
+        this.query = query
+        return this;
+    }
+    setAttr<T = any>(attr: string, value: T): this{
+        this.attrs[attr] = value
+        return this;
+    }
+    setAttrs<T = any>(attrs: Datum<any>): this{
+        this.attrs = attrs
+        return this;
+    }
 
-        if (Object.keys(schema).length > 0){
-            return (new Response()).error('Invalid input',400,schema)
+    getHeader<R>(key?: string): R | null{
+        return key ? (this.headers?.[key] ?? null) : null
+    }
+    getArgs<R>(key?: string): R | null{
+        return key ? (this.args?.[key] ?? null) : null
+    }
+    getAttrs<R>(key?: string): R | null{
+        return key ? (this.attrs?.[key] ?? null) : null
+    }
+    getParams<R>(key?: string): R | null{
+        return key ? (this.params?.[key] ?? null) : null
+    }
+
+    async validate(schemaRules: (rule: typeof Validator.Rule) => {[k: string]: Validator.Rule}){
+        let schema =  (new Validator.Schema(schemaRules(Validator.Rule)))
+        let result = await schema.validate(this.data)
+
+        if (Object.keys(result).length > 0){
+            return (new Response()).error('Invalid input',400,result)
         }
         return true
+    }
+
+    async get(url: string): Promise<Response>{
+        return await this.makeRequest(url,async (url) => await axios.get(url,{
+            headers: this.headers
+        }))
+    }
+
+    async post(url: string, data?: Datum<any>): Promise<Response>{
+        return await this.makeRequest(url,async (url) => await axios.post(url, data ?? this.data ?? {}, {
+            headers: this.headers
+        }))
+    }
+    async patch(url: string, data?: Datum<any>): Promise<Response>{
+        return await this.makeRequest(url,async (url) => await axios.patch(url, data ?? this.data ?? {}, {
+            headers: this.headers
+        }))
+    }
+    async put(url: string, data?: Datum<any>): Promise<Response>{
+        return await this.makeRequest(url,async (url) => await axios.put(url, data ?? this.data ?? {}, {
+            headers: this.headers
+        }))
+    }
+
+    async makeRequest(url: string,request: (url) => Promise<AxiosResponse>): Promise<Response>{
+
+        try {
+            let queryString = this.query ?  new URLSearchParams(this.query).toString() : ''
+
+            if (queryString.length)
+                url +='?'+queryString
+
+
+            let axiosRes = await request(url);
+            let status = axiosRes.status
+            let headers = axiosRes.headers
+
+            let response = new Response();
+            response.headers = headers;
+            response.status_code = status;
+            response.data = axiosRes.data;
+            return response
+        }catch (e){
+            let response = new Response();
+
+            response.headers = e.response.headers;
+            response.status_code = e.response.status;
+            response.data = e.response.data;
+            response.message = e.response.statusText
+
+            return response
+        }
     }
 }
