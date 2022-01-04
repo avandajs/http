@@ -4,10 +4,11 @@ import { Model } from "@avanda/orm";
 import { Sequelize } from "sequelize";
 
 type AllowedMethods = 'any' | 'get' | 'post' | 'option'
-export default abstract class Controller{
-    protected model?: Model | any
+export default  class Controller{
+    public model?: Model | any
+    public exclude?: string[]
     connection: Sequelize
-    protected constructor(connection: Sequelize, model: Model | null = null, autolink: boolean =  false) {
+    constructor(connection: Sequelize, model: Model | null = null) {
         this.connection = connection;
         if (model){
             this.model = model;
@@ -21,4 +22,11 @@ export default abstract class Controller{
     async getAll(response: Response,request: Request) {
         return (await this.model?.all())
     }
+    async getAllByPage(response: Response,request: Request) {
+        let data = await this.model?.page(request.page)
+        response.totalPages = this.model.totalPages
+        response.currentPage = request.page
+        return response.success('Data fetched',data)
+    }
+
 }
