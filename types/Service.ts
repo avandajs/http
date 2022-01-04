@@ -1,4 +1,5 @@
 import Filters from "./Filters";
+import Datum from "./Datum";
 
 export default  interface Service {
     n: string,//name
@@ -8,4 +9,7 @@ export default  interface Service {
     a?: string//as/alias
     al?: boolean//auto-link
     ft?: Filters//filter
+    pr?: Datum<any>//filter,
+    p: number,//service page
+
 }
