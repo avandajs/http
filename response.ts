@@ -1,6 +1,11 @@
+import Datum from "./types/Datum";
+
 export default class Response{
     status_code: number = 0
     data: any;
+    currentPage: number;
+    totalPages: number;
+    headers: Datum<any>;
     message?: string;
     constructor() {
 
