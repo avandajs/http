@@ -6,12 +6,11 @@ import cors from "cors"
 import Controller from "./controller";
 import {Request, Response} from "../index";
 import {Sequelize} from "sequelize";
-import {runtimeError} from "@avanda/error";
 import {Model} from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
-import {snakeCase} from "lodash";
+import {snakeCase,omit,isPlainObject} from "lodash";
 import {serverConfig} from "@avanda/app";
 
 /*
@@ -32,7 +31,7 @@ export default class Query {
     autoLink?: boolean;
     connection: Promise<Sequelize> | Sequelize;
     models: {[model: string]: any} = {}
-    controllers: {[model: string]: any} = {}
+    controllers: {[model: string]: typeof Controller} = {}
     serverConfig: serverConfig
 
     constructor(serverConfig: serverConfig) {
@@ -56,7 +55,7 @@ export default class Query {
         this.app.use(cors({
             credentials: true,
             origin:(origin, callback) => {
-                if (this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                if (!origin || this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
                     callback(null, true)
                 } else {
                     callback(new Error('Not allowed by CORS'))
@@ -67,7 +66,7 @@ export default class Query {
         this.app.use(fileUpload({
             useTempFiles: true
         }));
-
+        this.app.use(express.static('public'))
 
         this.app.all(this.path, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
@@ -86,6 +85,8 @@ export default class Query {
                             msg: response.message,
                             data: response.data,
                             status_code: response.status_code,
+                            totalPages: response.currentPage,
+                            ...(response.totalPages && {totalPages: response.totalPages})
                         })
                         return;
                     } else {
@@ -93,6 +94,8 @@ export default class Query {
                             msg: 'Auto-generated message',
                             data: response,
                             status_code: 200,
+                            totalPages: response.currentPage,
+                            ...(response.totalPages && {totalPages: response.totalPages})
                         })
                     }
                     return;
@@ -111,7 +114,7 @@ export default class Query {
     public listen(){
 
         if (!this.app)
-            throw new runtimeError('Execute before you listen')
+            throw new Error('Execute before you listen')
 
         this.app.listen(this.port, () => {
             console.log(`app listening at http://localhost:${this.port}`)
@@ -125,7 +128,8 @@ export default class Query {
         columns: Array<string | Service>,
         req: express.Request,
         res: express.Response,
-        rootService: Service
+        rootService: Service,
+        toExclude: string[]
     ): Promise<any[] | Datum<any>> {
 
         let ret: any[] | Datum<any> = []
@@ -133,16 +137,19 @@ export default class Query {
         if (Array.isArray(data)) {
             for (let index in data) {
                 let datum: Datum<any> | any;
-                if (data[index] instanceof Object && !Array.isArray(data[index]) && data[index] !== null) {
-
+                if (isPlainObject(data[index])) {
                     if (!datum)
                         datum = {};
 
                     if (columns.length){
                         for (let col of columns) {
-
                             if (typeof col == 'string' || (col.t && col.t == 'c')) {
                                 col = typeof col == 'string' ? col : col.n;
+                                //
+                                if (toExclude?.includes?.(col.trim()))
+                                    continue;
+
+                                    // if (this)
                                 data[index] = JSON.parse(JSON.stringify(data[index]))
 
                                 if (col in data[index]) {
@@ -160,7 +167,7 @@ export default class Query {
                     }
                     else{
                     //    return all data if no column was specified
-                        datum = data[index];
+                        datum = omit(data[index],toExclude ?? []);
                     }
 
                 }
@@ -178,13 +185,21 @@ export default class Query {
                 for (const service of columns) {
                     if (typeof service == 'string' || (service.t && service.t === 'c')) {
                         let column = typeof service == 'string' ? service : service.n;
-                        datum[column] = data ? (data[column] || null) : null;
+
+                        if (toExclude?.includes?.(column.trim()))
+                            continue;
+
+                        datum[column] = data[column] ?? null
                     } else {
                         datum[service.a ? service.a : service.n.toLowerCase()] = await this.generateResponse(service, req, res, false, data, rootService)
                     }
                 }
             }else{
-                datum = data
+                if (isPlainObject(data))
+                    datum = omit(data,toExclude ?? [])
+                else
+                    datum = data
+
             }
             ret = datum;
         }
@@ -209,13 +224,15 @@ export default class Query {
             this.autoLink = query.al;
         }
         let data: Datum<any> | null = null;
-        let columns: string[] = [];
         if (!(name in this.controllers)) {
-            throw new runtimeError('Invalid controller name: ' + name)
+            throw new Error('Invalid controller name: ' + name)
         }
 
+        let controller = new this.controllers[name](await this.connection)
+        let toExclude = controller?.exclude
+
         let controllerResponse = await this.getServiceFncResponse(
-            this.controllers[name],
+            controller,
             req,
             res,
             name,
@@ -242,7 +259,14 @@ export default class Query {
 
 
         if (children && controllerData) {//
-            data = await this.extractNeededDataFromArray(controllerData, children, req, res, query);
+            data = await this.extractNeededDataFromArray(
+                JSON.parse(JSON.stringify(controllerData, null, 2)),
+                children,
+                req,
+                res,
+                query,
+                toExclude
+            );
             //
         }
 
@@ -254,7 +278,7 @@ export default class Query {
     }
 
     private async getServiceFncResponse(
-        controller: new (connection: Sequelize,model: Model | null) => Controller,
+        controller: Controller,
         req: express.Request,
         res: express.Response,
         serviceName: string,
@@ -267,10 +291,16 @@ export default class Query {
 
         let fnc = service.f ? service.f:'get';
         let model: Model | null = null;
-        let request = new Request(req, res)
+        let request = new Request()
+        request.method = req.method
         request.data = req.body
         request.files = req.files
         request.args = parentData
+        request.headers = req.headers
+        request.params = service.pr
+        request.page = service.p
+
+        let filters = {}
 
         if (this.models && (serviceName in this.models)){
 
@@ -279,17 +309,17 @@ export default class Query {
             if (this.autoLink && parentData) {//auto-link enabled
                 //find secondary key in parent data
 
-                let sec_key = snakeCase(parentService.n) + '_id'
-
-                if (typeof parentData[sec_key] != 'undefined'){
+                let parent_key = snakeCase(parentService.n) + '_id'
+                let self_key = snakeCase(serviceName) + '_id'
+                if (typeof parentData[self_key] != 'undefined'){
                 //    parent has 1 to 1 relationship
-                    model.where({id: parentData[sec_key]})
+                    model.where({id: parentData[self_key]})
                 }else{
                     // Parent has 1 to many relationship
                     if (typeof parentData['id'] == 'undefined'){
-                        throw new runtimeError(`${parentService.n} does not return property "id" to link ${service.n}'s secondary key ${sec_key} with`)
+                        throw new Error(`${parentService.n} does not return property "id" to link ${service.n}'s secondary key ${parent_key} with`)
                     }
-                    model.where({[sec_key]: parentData['id']})
+                    model.where({[parent_key]: parentData['id']})
                 }
             }
 
@@ -298,8 +328,13 @@ export default class Query {
                 model = Query.bindFilters(model,service.ft)
             }
         }
+        //set the model
+        controller.model = model
 
-        return await new controller(await this.connection, model)[fnc](new Response(), request);
+        if (typeof controller[fnc] != 'function')
+            throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`)
+
+        return await controller[fnc](new Response(), request);
     }
 
     private static bindFilters(model: Model, filters: Filters): Model {
@@ -312,7 +347,7 @@ export default class Query {
                 model.whereRaw(`${key} < ${value}`);
             },
             "==": (key: string, value: any, model: Model) => {
-                model.whereRaw(`${key} = ${value}`);
+                model.where({[key]: value});
             },
             "=": (key: string, value: any, model: Model) => {
                 operators['=='](key,value,model)
