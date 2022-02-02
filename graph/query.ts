@@ -29,6 +29,7 @@ export default class Query {
     port: number = 8080;
     path: string = '/';
     autoLink?: boolean;
+    corsRejected?: boolean = true;
     connection: Promise<Sequelize> | Sequelize;
     models: {[model: string]: any} = {}
     controllers: {[model: string]: typeof Controller} = {}
@@ -56,9 +57,11 @@ export default class Query {
             credentials: true,
             origin:(origin, callback) => {
                 if (!origin || this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                    this.corsRejected = false
                     callback(null, true)
                 } else {
-                    callback(new Error('Not allowed by CORS'))
+                    this.corsRejected = true
+                    callback(null, true)
                 }
             }
 
@@ -70,7 +73,15 @@ export default class Query {
 
         this.app.all(this.path, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
-            if (query) {
+            if (this.corsRejected){
+                res.json({
+                    msg: null,
+                    data: null,
+                    status_code: 500,
+                    totalPages: 0
+                })
+                return;
+            }else if (query) {
                 query = JSON.parse(query);
                 if (query) {
                     let response = await this.generateResponse(
