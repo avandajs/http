@@ -88,6 +88,7 @@ var Query = /** @class */ (function () {
         this.app = (0, express_1.default)();
         this.port = 8080;
         this.path = '/';
+        this.corsRejected = true;
         this.models = {};
         this.controllers = {};
         this.serverConfig = serverConfig;
@@ -108,10 +109,12 @@ var Query = /** @class */ (function () {
                     credentials: true,
                     origin: function (origin, callback) {
                         if (!origin || _this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                            _this.corsRejected = false;
                             callback(null, true);
                         }
                         else {
-                            callback(new Error('Not allowed by CORS'));
+                            _this.corsRejected = true;
+                            callback(null, true);
                         }
                     }
                 }));
@@ -125,11 +128,20 @@ var Query = /** @class */ (function () {
                         switch (_a.label) {
                             case 0:
                                 query = req.query.query;
-                                if (!query) return [3 /*break*/, 2];
-                                query = JSON.parse(query);
-                                if (!query) return [3 /*break*/, 2];
-                                return [4 /*yield*/, this.generateResponse(query, req, res)];
+                                if (!this.corsRejected) return [3 /*break*/, 1];
+                                res.json({
+                                    msg: null,
+                                    data: null,
+                                    status_code: 500,
+                                    totalPages: 0
+                                });
+                                return [2 /*return*/];
                             case 1:
+                                if (!query) return [3 /*break*/, 3];
+                                query = JSON.parse(query);
+                                if (!query) return [3 /*break*/, 3];
+                                return [4 /*yield*/, this.generateResponse(query, req, res)];
+                            case 2:
                                 response = _a.sent();
                                 res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization');
                                 if (response instanceof index_1.Response) {
@@ -141,7 +153,7 @@ var Query = /** @class */ (function () {
                                     res.json(__assign({ msg: 'Auto-generated message', data: response, status_code: 200, totalPages: response.currentPage }, (response.totalPages && { totalPages: response.totalPages })));
                                 }
                                 return [2 /*return*/];
-                            case 2:
+                            case 3:
                                 res.send('Hello World!');
                                 return [2 /*return*/];
                         }
