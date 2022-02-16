@@ -159,7 +159,7 @@ var Query = /** @class */ (function () {
         if (!this.app)
             throw new Error('Execute before you listen');
         this.app.listen(this.port, function () {
-            console.log("app listening at http://localhost:" + _this.port);
+            console.log("app listening at http://localhost:".concat(_this.port));
         });
         return this.app;
     };
@@ -294,7 +294,6 @@ var Query = /** @class */ (function () {
                     case 1:
                         controller = new (_b.apply(_a, [void 0, _d.sent()]))();
                         toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;
-                        console.log({ toExclude: toExclude });
                         return [4 /*yield*/, this.getServiceFncResponse(controller, req, res, name, query, parentData, parentService)];
                     case 2:
                         controllerResponse = _d.sent();
@@ -376,7 +375,7 @@ var Query = /** @class */ (function () {
                             else {
                                 // Parent has 1 to many relationship
                                 if (typeof parentData['id'] == 'undefined') {
-                                    throw new Error(parentService.n + " does not return property \"id\" to link " + service.n + "'s secondary key " + parent_key + " with");
+                                    throw new Error("".concat(parentService.n, " does not return property \"id\" to link ").concat(service.n, "'s secondary key ").concat(parent_key, " with"));
                                 }
                                 model.where((_c = {}, _c[parent_key] = parentData['id'], _c));
                             }
@@ -390,7 +389,7 @@ var Query = /** @class */ (function () {
                         //set the model
                         controller.model = model;
                         if (typeof controller[fnc] != 'function')
-                            throw new Error("function `" + fnc + "` does not exist in " + serviceName);
+                            throw new Error("function `".concat(fnc, "` does not exist in ").concat(serviceName));
                         return [4 /*yield*/, controller[fnc](new index_1.Response(), request)];
                     case 3: return [2 /*return*/, _d.sent()];
                 }
@@ -402,10 +401,10 @@ var Query = /** @class */ (function () {
         var operators;
         operators = {
             ">": function (key, value, model) {
-                model.whereRaw(key + " > " + value);
+                model.whereRaw("".concat(key, " > ").concat(value));
             },
             "<": function (key, value, model) {
-                model.whereRaw(key + " < " + value);
+                model.whereRaw("".concat(key, " < ").concat(value));
             },
             "==": function (key, value, model) {
                 var _a;
@@ -415,7 +414,7 @@ var Query = /** @class */ (function () {
                 operators['=='](key, value, model);
             },
             "!=": function (key, value, model) {
-                model.whereRaw(key + " != " + value);
+                model.whereRaw("".concat(key, " != ").concat(value));
             },
             "NULL": function (key, value, model) {
                 model.whereColIsNull(key);
@@ -427,7 +426,7 @@ var Query = /** @class */ (function () {
                 model.whereColumns(key).matches(value);
             },
             "LIKES": function (key, value, model) {
-                model.where(key).like("%" + value + "%");
+                model.where(key).like("%".concat(value, "%"));
             },
             "NOT": function (key, value, model) {
                 model.where(key).notLike("%$value%");

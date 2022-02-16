@@ -14,7 +14,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@avanda/app": "^1.9.49",
+    "@avanda/app": "^1.9.52",
     "@avanda/core": "0.0.7",
     "@avanda/orm": "^0.2.24",
     "axios": "^0.24.0",

@@ -79,7 +79,7 @@ function default_1(middlewares, res, req) {
                             return [2 /*return*/, middlewareResponse];
                         }
                         else {
-                            return [2 /*return*/, (new response_1.default()).error(index + " failed but has no onFailure method response")];
+                            return [2 /*return*/, (new response_1.default()).error("".concat(index, " failed but has no onFailure method response"))];
                         }
                     }
                     _d.label = 6;
