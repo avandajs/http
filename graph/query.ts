@@ -78,7 +78,7 @@ export default class Query {
                     msg: null,
                     data: null,
                     status_code: 500,
-                    totalPages: 0
+                    total_pages: 0
                 })
                 return;
             }else if (query) {
@@ -91,13 +91,14 @@ export default class Query {
                     )
                     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization')
                     if (response instanceof Response) {
-                        res.status(parseInt(response.status_code as unknown as string))
+                        res.status(parseInt(response.statusCode as unknown as string))
                         res.json({
                             msg: response.message,
                             data: response.data,
-                            status_code: response.status_code,
-                            totalPages: response.currentPage,
-                            ...(response.totalPages && {totalPages: response.totalPages})
+                            status_code: response.statusCode,
+                            current_page: response.currentPage,
+                            per_page: response.perPage,
+                            ...(response.totalPages && {total_pages: response.totalPages})
                         })
                         return;
                     } else {
@@ -105,7 +106,8 @@ export default class Query {
                             msg: 'Auto-generated message',
                             data: response,
                             status_code: 200,
-                            totalPages: response.currentPage,
+                            current_page: response.currentPage,
+                            per_page: response.perPage,
                             ...(response.totalPages && {totalPages: response.totalPages})
                         })
                     }

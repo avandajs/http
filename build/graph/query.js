@@ -133,7 +133,7 @@ var Query = /** @class */ (function () {
                                     msg: null,
                                     data: null,
                                     status_code: 500,
-                                    totalPages: 0
+                                    total_pages: 0
                                 });
                                 return [2 /*return*/];
                             case 1:
@@ -145,12 +145,12 @@ var Query = /** @class */ (function () {
                                 response = _a.sent();
                                 res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization');
                                 if (response instanceof index_1.Response) {
-                                    res.status(parseInt(response.status_code));
-                                    res.json(__assign({ msg: response.message, data: response.data, status_code: response.status_code, totalPages: response.currentPage }, (response.totalPages && { totalPages: response.totalPages })));
+                                    res.status(parseInt(response.statusCode));
+                                    res.json(__assign({ msg: response.message, data: response.data, status_code: response.statusCode, current_page: response.currentPage, per_page: response.perPage }, (response.totalPages && { total_pages: response.totalPages })));
                                     return [2 /*return*/];
                                 }
                                 else {
-                                    res.json(__assign({ msg: 'Auto-generated message', data: response, status_code: 200, totalPages: response.currentPage }, (response.totalPages && { totalPages: response.totalPages })));
+                                    res.json(__assign({ msg: 'Auto-generated message', data: response, status_code: 200, current_page: response.currentPage, per_page: response.perPage }, (response.totalPages && { totalPages: response.totalPages })));
                                 }
                                 return [2 /*return*/];
                             case 3:

@@ -120,14 +120,14 @@ export default class Request{
 
             let response = new Response();
             response.headers = headers;
-            response.status_code = status;
+            response.statusCode = status;
             response.data = axiosRes.data;
             return response
         }catch (e){
             let response = new Response();
 
             response.headers = e.response.headers;
-            response.status_code = e.response.status;
+            response.statusCode = e.response.status;
             response.data = e.response.data;
             response.message = e.response.statusText
 

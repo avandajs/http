@@ -20,8 +20,8 @@ export default async function (middlewares: Middleware[], res: Response, req: Re
             if (typeof middleware.onFailure == 'function'){
                 let middlewareResponse = middleware.onFailure(res,req);
 
-                if (middlewareResponse.status_code < 300)
-                    middlewareResponse.status_code = 401;
+                if (middlewareResponse.statusCode < 300)
+                    middlewareResponse.statusCode = 401;
 
                 return middlewareResponse;
             }else{

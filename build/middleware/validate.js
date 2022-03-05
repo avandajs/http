@@ -74,8 +74,8 @@ function default_1(middlewares, res, req) {
                     if (_c) {
                         if (typeof middleware.onFailure == 'function') {
                             middlewareResponse = middleware.onFailure(res, req);
-                            if (middlewareResponse.status_code < 300)
-                                middlewareResponse.status_code = 401;
+                            if (middlewareResponse.statusCode < 300)
+                                middlewareResponse.statusCode = 401;
                             return [2 /*return*/, middlewareResponse];
                         }
                         else {

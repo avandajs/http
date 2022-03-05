@@ -26,6 +26,7 @@ export default  class Controller{
         let data = await this.model?.page(request.page)
         response.totalPages = this.model.totalPages
         response.currentPage = request.page
+        response.perPage = this.model.perPage;
         return response.success('Data fetched',data)
     }
 

@@ -1,10 +1,11 @@
 import Datum from "./types/Datum";
 
 export default class Response{
-    status_code: number = 0
+    statusCode: number = 0
     data: any;
     currentPage: number;
     totalPages: number;
+    perPage: number = 0;
     headers: Datum<any>;
     message?: string;
     constructor() {
@@ -12,7 +13,7 @@ export default class Response{
     }
 
     status(code: number){
-        this.status_code = code
+        this.statusCode = code
     }
 
     json(data: any[]){
@@ -20,14 +21,14 @@ export default class Response{
     }
 
     success<ResponseDataType>(msg: string, data: ResponseDataType | null = null,code: number = 200): Response{
-        this.status_code = code
+        this.statusCode = code
         this.data = data
         this.message = msg;
         return this
     }
 
     error<ResponseDataType>(msg: string, code: number = 401, data: ResponseDataType | null = null): Response{
-        this.status_code = 400
+        this.statusCode = 400
         this.data = data
         this.message = msg;
         return this

@@ -78,6 +78,7 @@ var Controller = /** @class */ (function () {
                         data = _b.sent();
                         response.totalPages = this.model.totalPages;
                         response.currentPage = request.page;
+                        response.perPage = this.model.perPage;
                         return [2 /*return*/, response.success('Data fetched', data)];
                 }
             });

@@ -220,14 +220,14 @@ var Request = /** @class */ (function () {
                         headers = axiosRes.headers;
                         response = new response_1.default();
                         response.headers = headers;
-                        response.status_code = status_1;
+                        response.statusCode = status_1;
                         response.data = axiosRes.data;
                         return [2 /*return*/, response];
                     case 2:
                         e_1 = _a.sent();
                         response = new response_1.default();
                         response.headers = e_1.response.headers;
-                        response.status_code = e_1.response.status;
+                        response.statusCode = e_1.response.status;
                         response.data = e_1.response.data;
                         response.message = e_1.response.statusText;
                         return [2 /*return*/, response];
