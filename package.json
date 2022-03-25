@@ -1,6 +1,6 @@
 {
   "name": "@avanda/http",
-  "version": "0.3.35",
+  "version": "0.3.39",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",
@@ -16,7 +16,7 @@
   "dependencies": {
     "@avanda/app": "^1.9.61",
     "@avanda/core": "0.0.7",
-    "@avanda/orm": "^0.2.24",
+    "@avanda/orm": "^0.2.30",
     "axios": "^0.24.0",
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",

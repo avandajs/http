@@ -103,8 +103,8 @@ var Query = /** @class */ (function () {
             return __generator(this, function (_a) {
                 this.models = models;
                 this.controllers = controllers;
-                this.app.use(bodyParser.json());
-                this.app.use(bodyParser.urlencoded({ extended: true }));
+                this.app.use(bodyParser.json({ limit: '100mb' }));
+                this.app.use(bodyParser.urlencoded({ extended: true, limit: '100mb' }));
                 this.app.use((0, cors_1.default)({
                     credentials: true,
                     origin: function (origin, callback) {

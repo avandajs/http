@@ -27,7 +27,8 @@ import {serverConfig} from "@avanda/app";
 export default class Query {
     app: Express = express();
     port: number = 8080;
-    path: string = '/';
+    httpPath: string = '/graph';
+    websocketPath: string = '/watch';
     autoLink?: boolean;
     corsRejected?: boolean = true;
     connection: Promise<Sequelize> | Sequelize;
@@ -39,7 +40,7 @@ export default class Query {
         this.serverConfig = serverConfig
         this.connection = serverConfig.connection;
         this.port = parseInt(serverConfig.port as string)
-        this.path = serverConfig.rootPath
+        this.httpPath = serverConfig.rootPath
 
         return this;
     }
@@ -51,8 +52,8 @@ export default class Query {
         this.models = models
         this.controllers = controllers
 
-        this.app.use(bodyParser.json());
-        this.app.use(bodyParser.urlencoded({ extended: true }));
+        this.app.use(bodyParser.json({limit: '100mb'}));
+        this.app.use(bodyParser.urlencoded({ extended: true ,limit:'100mb'}));
         this.app.use(cors({
             credentials: true,
             origin:(origin, callback) => {
@@ -71,7 +72,7 @@ export default class Query {
         }));
         this.app.use(express.static('public'))
 
-        this.app.all(this.path, async (req: express.Request, res: express.Response) => {
+        this.app.all(this.httpPath, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
             if (this.corsRejected){
                 res.json({
@@ -116,6 +117,12 @@ export default class Query {
             }
             res.send('Hello World!')
         })
+
+        //websocket watch
+
+        this.app.all(this.websocketPath)
+
+        this.app.on("upgrade")
 
         return this
     }

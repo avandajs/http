@@ -85,10 +85,10 @@
     "express" "^4.17.1"
     "sequelize" "^6.6.5"
 
-"@avanda/orm@^0.2.24", "@avanda/orm@^0.2.25":
-  "integrity" "sha512-XzBvhYdyfXSKtMPByx5nmyvkW6dE43rNQasWaFMOtDNHoy74rOtmPaiooEa1yqv9rC0qLHxBuotifapaCS7GEw=="
-  "resolved" "https://registry.npmjs.org/@avanda/orm/-/orm-0.2.28.tgz"
-  "version" "0.2.28"
+"@avanda/orm@^0.2.25", "@avanda/orm@^0.2.30":
+  "integrity" "sha512-4mV/gyGOsOmDdxzRZhL4WJ9+65fLRjyGS1AXydnB01olxzs0BfFwKcfT9/qzOtE6UQc8lRopuJa1cXYF/Ftz9A=="
+  "resolved" "https://registry.npmjs.org/@avanda/orm/-/orm-0.2.30.tgz"
+  "version" "0.2.30"
   dependencies:
     "@avanda/app" "^0.10.31"
     "@avanda/error" "^0.2.3"
