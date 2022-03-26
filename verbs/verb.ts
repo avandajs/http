@@ -34,8 +34,7 @@ export default function (middlewares: Middleware[],method: string){
             //ignore next line
             Object.defineProperty(this,'request_method',{value: 'get'})
 
-            const result = originalMethod.apply(this, args);
-            return result;
+            return originalMethod.apply(this, args);
         };
 
         return descriptor;
