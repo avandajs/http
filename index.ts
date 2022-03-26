@@ -7,6 +7,7 @@ import Get from "./verbs/get"
 import Post from "./verbs/post"
 import Delete from "./verbs/delete"
 import Option from "./verbs/option"
+import Watchable from "./verbs/watchable"
 export {
     Controller,
     Middleware,
@@ -16,5 +17,6 @@ export {
     Get,
     Post,
     Option,
-    Delete
+    Delete,
+    Watchable
 }

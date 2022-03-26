@@ -5,6 +5,7 @@ export default class Response{
     data: any;
     currentPage: number;
     totalPages: number;
+    responseChanged: boolean = false;
     perPage: number = 0;
     headers: Datum<any>;
     message?: string;

@@ -29,7 +29,6 @@ export default class Request{
         return files
     }
     getFile(key: string): UploadedFile | undefined{
-        console.log({files: this.files})
         let files = this.files?.[key];
         if (Array.isArray(files))
             return files[0]

@@ -1,8 +1,8 @@
-import express, {Express} from "express"
+import express, {Express, request as ExpressRequest, response} from "express"
 import * as bodyParser from "body-parser"
 import fileUpload from "express-fileupload";
 import cors from "cors"
-
+import * as http from "http"
 import Controller from "./controller";
 import {Request, Response} from "../index";
 import {Sequelize} from "sequelize";
@@ -12,6 +12,13 @@ import Service from "../types/Service";
 import Filters from "../types/Filters";
 import {snakeCase,omit,isPlainObject} from "lodash";
 import {serverConfig} from "@avanda/app";
+import WebSocket from "ws";
+import queryString from "query-string";
+import WebSocketClient from "../types/WebSocketClient";
+import {request} from "express";
+import ColumnOptions from "../../orm/types/ColumnOptions";
+
+const CLIENTS: WebSocketClient[] = [];
 
 /*
  *
@@ -26,6 +33,7 @@ import {serverConfig} from "@avanda/app";
 
 export default class Query {
     app: Express = express();
+    server: http.Server;
     port: number = 8080;
     httpPath: string = '/graph';
     websocketPath: string = '/watch';
@@ -43,6 +51,29 @@ export default class Query {
         this.httpPath = serverConfig.rootPath
 
         return this;
+    }
+
+    private static responseToObject(response: Response | any){
+
+        if (response instanceof Response) {
+            return  {
+                msg: response.message,
+                data: response.data,
+                status_code: response.statusCode,
+                current_page: response.currentPage,
+                per_page: response.perPage,
+                ...(response.totalPages && {total_pages: response.totalPages})
+            };
+        } else {
+            return {
+                msg: 'Auto-generated message',
+                data: response,
+                status_code: 200,
+                current_page: response.currentPage,
+                per_page: response.perPage,
+                ...(response.totalPages && {totalPages: response.totalPages})
+            };
+        }
     }
 
     async execute(
@@ -72,6 +103,9 @@ export default class Query {
         }));
         this.app.use(express.static('public'))
 
+
+        // this.app.request
+
         this.app.all(this.httpPath, async (req: express.Request, res: express.Response) => {
             let query = req.query.query as string;
             if (this.corsRejected){
@@ -91,27 +125,10 @@ export default class Query {
                         res
                     )
                     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization')
-                    if (response instanceof Response) {
-                        res.status(parseInt(response.statusCode as unknown as string))
-                        res.json({
-                            msg: response.message,
-                            data: response.data,
-                            status_code: response.statusCode,
-                            current_page: response.currentPage,
-                            per_page: response.perPage,
-                            ...(response.totalPages && {total_pages: response.totalPages})
-                        })
-                        return;
-                    } else {
-                        res.json({
-                            msg: 'Auto-generated message',
-                            data: response,
-                            status_code: 200,
-                            current_page: response.currentPage,
-                            per_page: response.perPage,
-                            ...(response.totalPages && {totalPages: response.totalPages})
-                        })
-                    }
+                   if(response.statusCode) {
+                       res.status(parseInt(response.statusCode as unknown as string))
+                   }
+                    res.json(Query.responseToObject(response))
                     return;
                 }
             }
@@ -120,9 +137,13 @@ export default class Query {
 
         //websocket watch
 
-        this.app.all(this.websocketPath)
+        this.app.all(this.websocketPath);
 
-        this.app.on("upgrade")
+        this.server = http.createServer(this.app);
+
+        let ws = this.startWebSocket(this.server,this.websocketPath);
+
+
 
         return this
     }
@@ -131,12 +152,91 @@ export default class Query {
         return this.app
     }
 
+    private async sendResponseToClient(client: WebSocketClient){
+        let res = await this.generateResponse(
+            client.service,
+            client.req,
+            client.res
+        )
+        // console.log({res})
+        if(res?.responseChanged){
+            client.client.send(JSON.stringify(Query.responseToObject(res)))
+        }
+    }
+
+    private startWatchingFunctions() {
+        for(let index in CLIENTS){
+            this.sendResponseToClient(CLIENTS[index]);
+        }
+    }
+
+    private startWebSocket(express: http.Server,path: string) {
+        //
+
+        const websocketServer = new WebSocket.Server({
+            noServer: true,
+            path,
+        });
+
+        express.on("upgrade", (request, socket, head) => {
+            websocketServer.handleUpgrade(request, socket, head, (websocket) => {
+                websocketServer.emit("connection", websocket, request);
+            });
+        });
+        let request = this.app.request;
+        let response = this.app.response;
+
+        websocketServer.on(
+            "connection",
+            (websocketConnection, connectionRequest) => {
+                const [_path, params] = connectionRequest?.url?.split("?");
+                const connectionParams = queryString.parse(params);
+                request.body = JSON.parse(connectionParams.data as unknown as string);
+                request.headers = connectionRequest.headers;
+                request.statusCode = connectionRequest.statusCode;
+                request.statusMessage = connectionRequest.statusMessage;
+
+                CLIENTS.push({
+                    client: websocketConnection,
+                    id: CLIENTS.length,
+                    service: JSON.parse(connectionParams.query as unknown as string) as unknown as Service,
+                    req: request,
+                    res: response
+                });
+
+                // connectionRequest.
+
+                console.log({CLIENTS})
+
+                // websocketConnection.
+
+                console.log(">> new connection");
+
+
+                // NOTE: connectParams are not used here but good to understand how to get
+                // to them if you need to pass data with the connection to identify it (e.g., a userId).
+
+                websocketConnection.on("message", (message) => {
+                    const parsedMessage = JSON.parse(message as unknown as string);
+                    websocketConnection.send(JSON.stringify({ message: 'There be gold in them thar hills.' }));
+                });
+
+                setInterval(() => {
+                    this.startWatchingFunctions();
+                }, 1000)
+            }
+        );
+
+        return websocketServer;
+
+    }
+
     public listen(){
 
         if (!this.app)
             throw new Error('Execute before you listen')
 
-        this.app.listen(this.port, () => {
+        this.server.listen(this.port, () => {
             console.log(`app listening at http://localhost:${this.port}`)
         })
 
