@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "module": "commonjs",
     "esModuleInterop": true,
-    "target": "es5",
+    "target": "ES2017",
     "moduleResolution": "node",
-    "sourceMap": false,
     "outDir": "build",
-    "skipLibCheck": true
+    "rootDir": "./",
+    "baseUrl": "./",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "lib": ["es2015"]
 }

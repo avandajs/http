@@ -16,7 +16,6 @@ import WebSocket from "ws";
 import queryString from "query-string";
 import WebSocketClient from "../types/WebSocketClient";
 import {request} from "express";
-import ColumnOptions from "../../orm/types/ColumnOptions";
 
 const CLIENTS: WebSocketClient[] = [];
 
