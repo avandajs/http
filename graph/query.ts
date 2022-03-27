@@ -141,15 +141,15 @@ export default class Query {
 
         this.server = http.createServer(this.app);
 
-        let ws = this.startWebSocket(this.server,this.websocketPath);
+        this.startWebSocket(this.server,this.websocketPath);
 
 
 
         return this
     }
 
-    public getServerInstance(): Express{
-        return this.app
+    public getServerInstance(): http.Server{
+        return this.server
     }
 
     private async sendResponseToClient(client: WebSocketClient){
@@ -240,7 +240,7 @@ export default class Query {
             console.log(`app listening at http://localhost:${this.port}`)
         })
 
-        return this.app
+        return this.server
     }
 
     private async extractNeededDataFromArray(
