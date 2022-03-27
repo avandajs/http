@@ -15,10 +15,7 @@ import {serverConfig} from "@avanda/app";
 import WebSocket from "ws";
 import queryString from "query-string";
 import WebSocketClient from "../types/WebSocketClient";
-import {request} from "express";
-
 const CLIENTS: WebSocketClient[] = [];
-
 /*
  *
  * The keys in the json/Service objects
@@ -75,10 +72,10 @@ export default class Query {
         }
     }
 
-    async execute(
+    execute(
         models: {[k: string]: any},
         controllers: {[k: string]: any},
-        ): Promise<this> {
+        ): this {
         this.models = models
         this.controllers = controllers
 
@@ -140,6 +137,13 @@ export default class Query {
 
         this.server = http.createServer(this.app);
 
+        this.app.on("listening", () => {
+
+        });
+
+        // this.app.
+        // this.server.
+
         this.startWebSocket(this.server,this.websocketPath);
 
 
@@ -147,7 +151,9 @@ export default class Query {
         return this
     }
 
-    public getServerInstance(): http.Server{
+    public getServerInstance(req:http.IncomingMessage, res: http.ServerResponse): http.Server{
+        // this.app()
+
         return this.server
     }
 
@@ -167,6 +173,10 @@ export default class Query {
         for(let index in CLIENTS){
             this.sendResponseToClient(CLIENTS[index]);
         }
+    }
+
+    handleRequest(){
+
     }
 
     private startWebSocket(express: http.Server,path: string) {

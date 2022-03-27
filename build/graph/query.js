@@ -63,7 +63,7 @@ class Query {
             return Object.assign({ msg: 'Auto-generated message', data: response, status_code: 200, current_page: response.currentPage, per_page: response.perPage }, (response.totalPages && { totalPages: response.totalPages }));
         }
     }
-    async execute(models, controllers) {
+    execute(models, controllers) {
         this.models = models;
         this.controllers = controllers;
         this.app.use(bodyParser.json({ limit: '100mb' }));
@@ -114,10 +114,15 @@ class Query {
         //websocket watch
         this.app.all(this.websocketPath);
         this.server = http.createServer(this.app);
+        this.app.on("listening", () => {
+        });
+        // this.app.
+        // this.server.
         this.startWebSocket(this.server, this.websocketPath);
         return this;
     }
-    getServerInstance() {
+    getServerInstance(req, res) {
+        // this.app()
         return this.server;
     }
     async sendResponseToClient(client) {
@@ -131,6 +136,8 @@ class Query {
         for (let index in CLIENTS) {
             this.sendResponseToClient(CLIENTS[index]);
         }
+    }
+    handleRequest() {
     }
     startWebSocket(express, path) {
         //
