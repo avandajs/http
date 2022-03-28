@@ -6,27 +6,43 @@ import Controller from "../graph/controller";
 import "reflect-metadata";
 
 
-const watchedMetadataKey = Symbol("watched");
-
 export default function (props: WatchableProps): any {
-    props.immediate = typeof props.immediate == 'undefined' ? true : props.immediate;
+    props.immediate = typeof props.immediate == 'undefined' ? true : !!props.immediate;
+
     return function (target: Controller, propertyKey: string, descriptor: PropertyDescriptor) {
         // target.watched[''];
 
+
+        // descriptor.
         const originalMethod = descriptor.value;
 
         descriptor.value = async function (...args: any) {
+
             let request = args[1] as Request
             let response = args[0] as Response
+
+            const watchedMetadataKey = request.id + ":watched";
+
+            let key = propertyKey;
             let resFunc = props.immediate ? originalMethod(...args) : response.success("");
+
             resFunc.responseChanged = false;
-            let prev: { value: any, response: Response, changed: boolean, firstCall: boolean, } = Reflect.getOwnMetadata(watchedMetadataKey, target, propertyKey) || {
+
+            type DataStruct = {
+                value: any,
+                response: Response,
+                changed: boolean,
+                firstCall: boolean,
+                reqData: string
+            }
+
+            let prev: DataStruct = Reflect.getOwnMetadata(watchedMetadataKey, target, key) || {
                 value: null,
                 firstCall: true,
                 changed: true,
-                response: resFunc
+                response: resFunc,
+                reqData: JSON.stringify(request.data ?? '')
             };
-
             //check for middlewares validity
             let middlewareCheck = await validate(props.middlewares, response, request)
             if (middlewareCheck !== null) {
@@ -35,7 +51,10 @@ export default function (props: WatchableProps): any {
                 }
             }
 
-            let responseToShow: Response = prev.response;
+            let reqData = JSON.stringify(request.data ?? '')
+            let forceNewRes = prev.reqData !== reqData
+
+            let responseToShow: Response = forceNewRes ? originalMethod(...args):prev.response;
 
             // get watchable function
             let watching = JSON.stringify(await props.watch(request));
@@ -43,7 +62,7 @@ export default function (props: WatchableProps): any {
             let somethingChanged = false;
 
 
-            if ((prev.firstCall && props.immediate) ||  prev.value !== watching) {
+            if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes) {
                 console.log("Something changed>>>>>>>")
                 // console.log({prevData: prev.value})
                 // console.log({watching})
@@ -53,11 +72,11 @@ export default function (props: WatchableProps): any {
                 prev.changed = false;
             }
 
+            props.immediate = false;
             prev.firstCall = false;
-            props.immediate = true;
+            prev.reqData = reqData;
 
             responseToShow.responseChanged = false;
-
 
             //ignore next line
             prev.value = watching;
@@ -65,9 +84,7 @@ export default function (props: WatchableProps): any {
 
             responseToShow.responseChanged = prev.changed;
 
-            console.log({responseToShowMutated: responseToShow, changed: prev.changed})
-
-            Reflect.defineMetadata(watchedMetadataKey, prev, target, propertyKey);
+            Reflect.defineMetadata(watchedMetadataKey, prev, target, key);
 
             return responseToShow;
         };

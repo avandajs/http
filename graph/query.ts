@@ -1,4 +1,4 @@
-import express, {Express, request as ExpressRequest, response} from "express"
+import express, {Express} from "express"
 import * as bodyParser from "body-parser"
 import fileUpload from "express-fileupload";
 import cors from "cors"
@@ -10,12 +10,17 @@ import {Model} from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
-import {snakeCase,omit,isPlainObject} from "lodash";
+import {isPlainObject, omit, snakeCase} from "lodash";
 import {serverConfig} from "@avanda/app";
 import WebSocket from "ws";
 import queryString from "query-string";
 import WebSocketClient from "../types/WebSocketClient";
-const CLIENTS: WebSocketClient[] = [];
+import {v4 as uuid} from "uuid"
+import AvandaWebSocket from "../types/AvandaWebSocket";
+import AvandaHttpRequest from "../types/AvandaHttpRequest";
+
+let CLIENTS: WebSocketClient[] = [];
+
 /*
  *
  * The keys in the json/Service objects
@@ -27,10 +32,13 @@ const CLIENTS: WebSocketClient[] = [];
 
 
 
+
+
 export default class Query {
     app: Express = express();
     server: http.Server;
     port: number = 8080;
+    watcherLatency: number = 3000;
     httpPath: string = '/graph';
     websocketPath: string = '/watch';
     autoLink?: boolean;
@@ -102,7 +110,7 @@ export default class Query {
 
         // this.app.request
 
-        this.app.all(this.httpPath, async (req: express.Request, res: express.Response) => {
+        this.app.all(this.httpPath, async (req: AvandaHttpRequest, res: express.Response) => {
             let query = req.query.query as string;
             if (this.corsRejected){
                 res.json({
@@ -118,7 +126,7 @@ export default class Query {
                     let response = await this.generateResponse(
                         (query as unknown as Service),
                         req,
-                        res
+                        res,
                     )
                     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization')
                    if(response.statusCode) {
@@ -161,7 +169,7 @@ export default class Query {
         let res = await this.generateResponse(
             client.service,
             client.req,
-            client.res
+            client.res,
         )
         // console.log({res})
         if(res?.responseChanged){
@@ -169,14 +177,15 @@ export default class Query {
         }
     }
 
-    private startWatchingFunctions() {
+    private async startWatchingFunctions() {
         for(let index in CLIENTS){
             this.sendResponseToClient(CLIENTS[index]);
         }
     }
 
-    handleRequest(){
-
+    handleConnectionAbortion(websocketConnection: AvandaWebSocket){
+        CLIENTS = CLIENTS.filter(client => client.client.clientId != websocketConnection.clientId);
+        console.log("disconnected client: " + websocketConnection.clientId)
     }
 
     private startWebSocket(express: http.Server,path: string) {
@@ -191,51 +200,74 @@ export default class Query {
             websocketServer.handleUpgrade(request, socket, head, (websocket) => {
                 websocketServer.emit("connection", websocket, request);
             });
+
         });
-        let request = this.app.request;
-        let response = this.app.response;
+
 
         websocketServer.on(
             "connection",
-            (websocketConnection, connectionRequest) => {
+            async (websocketConnection: AvandaWebSocket, connectionRequest) => {
                 const [_path, params] = connectionRequest?.url?.split("?");
                 const connectionParams = queryString.parse(params);
-                request.body = JSON.parse(connectionParams.data as unknown as string);
+                const clientId = uuid();
+                let request = Object.assign(Object.create(Object.getPrototypeOf(this.app.request)), this.app.request) as AvandaHttpRequest;
+                let response = Object.assign(Object.create(Object.getPrototypeOf(this.app.response)), this.app.response);
+                request.body = connectionParams.data ? JSON.parse(connectionParams.data as unknown as string): undefined;
                 request.headers = connectionRequest.headers;
                 request.statusCode = connectionRequest.statusCode;
                 request.statusMessage = connectionRequest.statusMessage;
+                request.requestId = clientId;
+                const service = JSON.parse(connectionParams.query as unknown as string) as unknown as Service;
+
+                websocketConnection.clientId = clientId;//
+                websocketConnection.clientIndex = CLIENTS.length;//
+                websocketConnection.service = service;//
 
                 CLIENTS.push({
                     client: websocketConnection,
-                    id: CLIENTS.length,
-                    service: JSON.parse(connectionParams.query as unknown as string) as unknown as Service,
+                    id: websocketConnection.clientId,
+                    service: service,
                     req: request,
                     res: response
                 });
 
-                // connectionRequest.
-
-                console.log({CLIENTS})
-
                 // websocketConnection.
 
-                console.log(">> new connection");
+                console.log(">> new connection", {clientId});
 
 
                 // NOTE: connectParams are not used here but good to understand how to get
                 // to them if you need to pass data with the connection to identify it (e.g., a userId).
 
-                websocketConnection.on("message", (message) => {
-                    const parsedMessage = JSON.parse(message as unknown as string);
-                    websocketConnection.send(JSON.stringify({ message: 'There be gold in them thar hills.' }));
+                websocketConnection.on("message", async (message) => {
+                    console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
+                    request.body = message ? JSON.parse(message as unknown as string) : {}
+                    let res = await this.generateResponse(
+                        websocketConnection.service,
+                        request,
+                        response,
+                    )
+                    // console.log({request})
+                    let obj = Query.responseToObject(res);
+                    websocketConnection.send(JSON.stringify(obj));
+                });
+
+                websocketConnection.on("close", (client: AvandaWebSocket) => {
+                    this.handleConnectionAbortion(websocketConnection);
+                });
+
+                websocketConnection.on("end", (client: AvandaWebSocket) => {
+                    this.handleConnectionAbortion(websocketConnection);
+                });
+                websocketConnection.on("aborted", (client: AvandaWebSocket) => {
+                    this.handleConnectionAbortion(websocketConnection);
                 });
 
                 setInterval(() => {
                     this.startWatchingFunctions();
-                }, 1000)
+                }, this.watcherLatency)
             }
         );
-
         return websocketServer;
 
     }
@@ -255,7 +287,7 @@ export default class Query {
     private async extractNeededDataFromArray(
         data: any[] | Datum<any>,
         columns: Array<string | Service>,
-        req: express.Request,
+        req: AvandaHttpRequest,
         res: express.Response,
         rootService: Service,
         toExclude: string[]
@@ -336,13 +368,20 @@ export default class Query {
         return ret
     }
 
+
+    private async getController(query: Service): Promise<Controller>{
+        let name = query.n;
+        return  new this.controllers[name](await this.connection)
+    }
+
     private async generateResponse(
         query: Service,
-        req: express.Request,
+        req: AvandaHttpRequest,
         res: express.Response,
         isRoot: boolean = true,
         parentData?: Datum<any>,
-        parentService?: Service
+        parentService?: Service,
+        _controller?: Controller
     ): Promise<Response | any> {
 
         let name = query.n;
@@ -357,7 +396,7 @@ export default class Query {
             throw new Error('Invalid controller name: ' + name)
         }
 
-        let controller = new this.controllers[name](await this.connection)
+        let controller = _controller ?? await this.getController(query)
         let toExclude = controller?.exclude
 
         let controllerResponse = await this.getServiceFncResponse(
@@ -408,7 +447,7 @@ export default class Query {
 
     private async getServiceFncResponse(
         controller: Controller,
-        req: express.Request,
+        req: AvandaHttpRequest,
         res: express.Response,
         serviceName: string,
         service: Service,
@@ -428,6 +467,7 @@ export default class Query {
         request.headers = req.headers
         request.params = service.pr
         request.page = service.p
+        request.id = req.requestId;
 
         let filters = {}
 

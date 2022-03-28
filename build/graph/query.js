@@ -31,7 +31,8 @@ const index_1 = require("../index");
 const lodash_1 = require("lodash");
 const ws_1 = __importDefault(require("ws"));
 const query_string_1 = __importDefault(require("query-string"));
-const CLIENTS = [];
+const uuid_1 = require("uuid");
+let CLIENTS = [];
 /*
  *
  * The keys in the json/Service objects
@@ -44,6 +45,7 @@ class Query {
     constructor(serverConfig) {
         this.app = (0, express_1.default)();
         this.port = 8080;
+        this.watcherLatency = 3000;
         this.httpPath = '/graph';
         this.websocketPath = '/watch';
         this.corsRejected = true;
@@ -132,12 +134,14 @@ class Query {
             client.client.send(JSON.stringify(Query.responseToObject(res)));
         }
     }
-    startWatchingFunctions() {
+    async startWatchingFunctions() {
         for (let index in CLIENTS) {
             this.sendResponseToClient(CLIENTS[index]);
         }
     }
-    handleRequest() {
+    handleConnectionAbortion(websocketConnection) {
+        CLIENTS = CLIENTS.filter(client => client.client.clientId != websocketConnection.clientId);
+        console.log("disconnected client: " + websocketConnection.clientId);
     }
     startWebSocket(express, path) {
         //
@@ -150,36 +154,53 @@ class Query {
                 websocketServer.emit("connection", websocket, request);
             });
         });
-        let request = this.app.request;
-        let response = this.app.response;
-        websocketServer.on("connection", (websocketConnection, connectionRequest) => {
+        websocketServer.on("connection", async (websocketConnection, connectionRequest) => {
             var _a;
             const [_path, params] = (_a = connectionRequest === null || connectionRequest === void 0 ? void 0 : connectionRequest.url) === null || _a === void 0 ? void 0 : _a.split("?");
             const connectionParams = query_string_1.default.parse(params);
-            request.body = JSON.parse(connectionParams.data);
+            const clientId = (0, uuid_1.v4)();
+            let request = Object.assign(Object.create(Object.getPrototypeOf(this.app.request)), this.app.request);
+            let response = Object.assign(Object.create(Object.getPrototypeOf(this.app.response)), this.app.response);
+            request.body = connectionParams.data ? JSON.parse(connectionParams.data) : undefined;
             request.headers = connectionRequest.headers;
             request.statusCode = connectionRequest.statusCode;
             request.statusMessage = connectionRequest.statusMessage;
+            request.requestId = clientId;
+            const service = JSON.parse(connectionParams.query);
+            websocketConnection.clientId = clientId; //
+            websocketConnection.clientIndex = CLIENTS.length; //
+            websocketConnection.service = service; //
             CLIENTS.push({
                 client: websocketConnection,
-                id: CLIENTS.length,
-                service: JSON.parse(connectionParams.query),
+                id: websocketConnection.clientId,
+                service: service,
                 req: request,
                 res: response
             });
-            // connectionRequest.
-            console.log({ CLIENTS });
             // websocketConnection.
-            console.log(">> new connection");
+            console.log(">> new connection", { clientId });
             // NOTE: connectParams are not used here but good to understand how to get
             // to them if you need to pass data with the connection to identify it (e.g., a userId).
-            websocketConnection.on("message", (message) => {
-                const parsedMessage = JSON.parse(message);
-                websocketConnection.send(JSON.stringify({ message: 'There be gold in them thar hills.' }));
+            websocketConnection.on("message", async (message) => {
+                console.log(">>>New message to: " + websocketConnection.clientId + ">>>> " + message);
+                request.body = message ? JSON.parse(message) : {};
+                let res = await this.generateResponse(websocketConnection.service, request, response);
+                // console.log({request})
+                let obj = Query.responseToObject(res);
+                websocketConnection.send(JSON.stringify(obj));
+            });
+            websocketConnection.on("close", (client) => {
+                this.handleConnectionAbortion(websocketConnection);
+            });
+            websocketConnection.on("end", (client) => {
+                this.handleConnectionAbortion(websocketConnection);
+            });
+            websocketConnection.on("aborted", (client) => {
+                this.handleConnectionAbortion(websocketConnection);
             });
             setInterval(() => {
                 this.startWatchingFunctions();
-            }, 1000);
+            }, this.watcherLatency);
         });
         return websocketServer;
     }
@@ -259,7 +280,11 @@ class Query {
         }
         return ret;
     }
-    async generateResponse(query, req, res, isRoot = true, parentData, parentService) {
+    async getController(query) {
+        let name = query.n;
+        return new this.controllers[name](await this.connection);
+    }
+    async generateResponse(query, req, res, isRoot = true, parentData, parentService, _controller) {
         let name = query.n;
         let type = query.t;
         let children = query.c;
@@ -270,7 +295,7 @@ class Query {
         if (!(name in this.controllers)) {
             throw new Error('Invalid controller name: ' + name);
         }
-        let controller = new this.controllers[name](await this.connection);
+        let controller = _controller !== null && _controller !== void 0 ? _controller : await this.getController(query);
         let toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;
         let controllerResponse = await this.getServiceFncResponse(controller, req, res, name, query, parentData, parentService);
         if (typeof controllerResponse == 'function' && !(controllerResponse instanceof index_1.Response))
@@ -308,6 +333,7 @@ class Query {
         request.headers = req.headers;
         request.params = service.pr;
         request.page = service.p;
+        request.id = req.requestId;
         let filters = {};
         if (this.models && (serviceName in this.models)) {
             model = new this.models[serviceName](await this.connection);

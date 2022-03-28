@@ -8,6 +8,7 @@ import UploadedFile from "./types/UploadedFile";
 
 export default class Request{
     method: string;
+    id: string | number;
     page: number;
     args?: Datum<any>
     attrs?: Datum<any> = {}
