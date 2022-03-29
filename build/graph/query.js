@@ -32,6 +32,9 @@ const lodash_1 = require("lodash");
 const ws_1 = __importDefault(require("ws"));
 const query_string_1 = __importDefault(require("query-string"));
 const uuid_1 = require("uuid");
+const ip_1 = __importDefault(require("ip"));
+const package_json_1 = require("../package.json");
+const cli_1 = require("@avanda/cli");
 let CLIENTS = [];
 /*
  *
@@ -116,8 +119,6 @@ class Query {
         //websocket watch
         this.app.all(this.websocketPath);
         this.server = http.createServer(this.app);
-        this.app.on("listening", () => {
-        });
         // this.app.
         // this.server.
         this.startWebSocket(this.server, this.websocketPath);
@@ -207,8 +208,12 @@ class Query {
     listen() {
         if (!this.app)
             throw new Error('Execute before you listen');
+        let ipAddress = ip_1.default.address("public");
+        // network.
         this.server.listen(this.port, () => {
-            console.log(`app listening at http://localhost:${this.port}`);
+            cli_1.Out.write(`\n\n@avanda/http v${package_json_1.version} dev server running at:\n
+> Local:    http://localhost:${this.port}/
+> Network:  http://${ipAddress}:${this.port}/`);
         });
         return this.server;
     }

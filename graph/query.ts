@@ -18,6 +18,9 @@ import WebSocketClient from "../types/WebSocketClient";
 import {v4 as uuid} from "uuid"
 import AvandaWebSocket from "../types/AvandaWebSocket";
 import AvandaHttpRequest from "../types/AvandaHttpRequest";
+import ip from "ip"
+import {version} from "../package.json"
+import {Out} from "@avanda/cli"
 
 let CLIENTS: WebSocketClient[] = [];
 
@@ -144,11 +147,6 @@ export default class Query {
         this.app.all(this.websocketPath);
 
         this.server = http.createServer(this.app);
-
-        this.app.on("listening", () => {
-
-        });
-
         // this.app.
         // this.server.
 
@@ -277,8 +275,15 @@ export default class Query {
         if (!this.app)
             throw new Error('Execute before you listen')
 
+        let ipAddress = ip.address("public")
+
+
+        // network.
+
         this.server.listen(this.port, () => {
-            console.log(`app listening at http://localhost:${this.port}`)
+            Out.write(`\n\n@avanda/http v${version} dev server running at:\n
+> Local:    http://localhost:${this.port}/
+> Network:  http://${ipAddress}:${this.port}/`)
         })
 
         return this.server

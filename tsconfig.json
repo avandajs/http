@@ -8,7 +8,8 @@
     "rootDir": "./",
     "baseUrl": "./",
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "resolveJsonModule": true
   },
   "lib": ["es2015"]
 }
