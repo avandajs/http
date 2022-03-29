@@ -281,8 +281,8 @@ export default class Query {
         // network.
 
         this.server.listen(this.port, () => {
-            Out.success(`@avanda/http v${version} dev server running at:`)
-            Out.write(`
+            Out.success(`@avanda/http v${version} dev server running at:`,false)
+            console.log(`
 > Local:    http://localhost:${this.port}/
 > Network:  http://${ipAddress}:${this.port}/`)
         })

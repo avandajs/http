@@ -1,6 +1,6 @@
 {
   "name": "@avanda/http",
-  "version": "0.3.48",
+  "version": "0.3.49",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",

@@ -211,8 +211,8 @@ class Query {
         let ipAddress = ip_1.default.address("public");
         // network.
         this.server.listen(this.port, () => {
-            cli_1.Out.success(`@avanda/http v${package_json_1.version} dev server running at:`);
-            cli_1.Out.write(`
+            cli_1.Out.success(`@avanda/http v${package_json_1.version} dev server running at:`, false);
+            console.log(`
 > Local:    http://localhost:${this.port}/
 > Network:  http://${ipAddress}:${this.port}/`);
         });
