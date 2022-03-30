@@ -65,11 +65,6 @@ export default function (props: WatchableProps): any {
             // get watchable function
             let watching = JSON.stringify(await props.watch(request));
 
-            if(middlewareCheck && prev.firstCall){
-                responseToShow.responseChanged = true;
-                prev.changed = true;
-                console.log("Sending middleware response >>>");
-            }
 
             if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes && !middlewareCheck) {
                 console.log("Something changed>>>>>>>")
@@ -77,6 +72,12 @@ export default function (props: WatchableProps): any {
                 prev.changed = true;
             } else {
                 prev.changed = false;
+            }
+
+            if(middlewareCheck && prev.firstCall){
+                responseToShow.responseChanged = true;
+                prev.changed = true;
+                console.log("Sending middleware response >>>");
             }
 
             props.immediate = false;

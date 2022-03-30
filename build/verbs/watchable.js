@@ -40,11 +40,6 @@ function default_1(props) {
             let responseToShow = (forceNewRes && !middlewareCheck) ? originalMethod(...args) : prev.response;
             // get watchable function
             let watching = JSON.stringify(await props.watch(request));
-            if (middlewareCheck && prev.firstCall) {
-                responseToShow.responseChanged = true;
-                prev.changed = true;
-                console.log("Sending middleware response >>>");
-            }
             if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes && !middlewareCheck) {
                 console.log("Something changed>>>>>>>");
                 responseToShow = await originalMethod.apply(this, args);
@@ -52,6 +47,11 @@ function default_1(props) {
             }
             else {
                 prev.changed = false;
+            }
+            if (middlewareCheck && prev.firstCall) {
+                responseToShow.responseChanged = true;
+                prev.changed = true;
+                console.log("Sending middleware response >>>");
             }
             props.immediate = false;
             prev.firstCall = false;
