@@ -15,6 +15,13 @@ function default_1(props) {
             var _a, _b;
             let request = args[1];
             let response = args[0];
+            //check middleware first
+            let middlewareCheck = await (0, validate_1.default)(props.middlewares, response, request);
+            if (middlewareCheck !== null) {
+                return function (...args) {
+                    return middlewareCheck;
+                };
+            }
             const watchedMetadataKey = request.id + ":watched";
             let key = propertyKey;
             let resFunc = props.immediate ? originalMethod(...args) : response.success("");
@@ -27,12 +34,6 @@ function default_1(props) {
                 reqData: JSON.stringify((_a = request.data) !== null && _a !== void 0 ? _a : '')
             };
             //check for middlewares validity
-            let middlewareCheck = await (0, validate_1.default)(props.middlewares, response, request);
-            if (middlewareCheck !== null) {
-                return function (...args) {
-                    return middlewareCheck;
-                };
-            }
             let reqData = JSON.stringify((_b = request.data) !== null && _b !== void 0 ? _b : '');
             let forceNewRes = prev.reqData !== reqData;
             let responseToShow = forceNewRes ? originalMethod(...args) : prev.response;
