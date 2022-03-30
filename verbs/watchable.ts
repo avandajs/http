@@ -24,17 +24,18 @@ export default function (props: WatchableProps): any {
             //check middleware first
 
             let middlewareCheck = await validate(props.middlewares, response, request)
-            if (middlewareCheck !== null) {
-                return function (...args: any) {
-                    return middlewareCheck
-                }
-            }
+            // if (middlewareCheck !== null) {
+            //     return function (...args: any) {
+            //         middlewareCheck.responseChanged = true;
+            //         return middlewareCheck
+            //     }
+            // }
 
 
             const watchedMetadataKey = request.id + ":watched";
 
             let key = propertyKey;
-            let resFunc = props.immediate ? originalMethod(...args) : response.success("");
+            let resFunc = middlewareCheck ? middlewareCheck : (props.immediate ? originalMethod(...args) : response.success(""));
 
             resFunc.responseChanged = false;
 
@@ -59,18 +60,19 @@ export default function (props: WatchableProps): any {
             let reqData = JSON.stringify(request.data ?? '')
             let forceNewRes = prev.reqData !== reqData
 
-            let responseToShow: Response = forceNewRes ? originalMethod(...args):prev.response;
+            let responseToShow: Response = (forceNewRes && !middlewareCheck) ? originalMethod(...args):prev.response;
 
             // get watchable function
             let watching = JSON.stringify(await props.watch(request));
 
-            let somethingChanged = false;
+            middlewareCheck.responseChanged = middlewareCheck && prev.firstCall;
 
+            if(middlewareCheck.responseChanged){
+                console.log("Sending middleware response >>>");
+            }
 
-            if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes) {
+            if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes && !middlewareCheck) {
                 console.log("Something changed>>>>>>>")
-                // console.log({prevData: prev.value})
-                // console.log({watching})
                 responseToShow = await originalMethod.apply(this, args)
                 prev.changed = true;
             } else {
