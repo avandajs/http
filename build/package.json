@@ -1,6 +1,6 @@
 {
     "name": "@avanda/http",
-    "version": "0.3.53",
+    "version": "0.3.59",
     "description": "Avanda http module ",
     "main": "build/index.js",
     "types": "index.ts",
@@ -14,7 +14,7 @@
         "access": "public"
     },
     "dependencies": {
-        "@avanda/app": "^1.10.6",
+        "@avanda/app": "^1.10.7",
         "@avanda/cli": "^0.9.3",
         "@avanda/core": "0.0.7",
         "@avanda/orm": "^0.2.38",
@@ -34,7 +34,7 @@
         "sequelize": "^6.6.5",
         "underscore": "^1.13.2",
         "uuid": "^8.3.2",
-        "vite": "^2.8.6",
+        "vite": "^2.9.0",
         "ws": "^8.5.0"
     },
     "devDependencies": {
