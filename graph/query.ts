@@ -19,7 +19,7 @@ import {v4 as uuid} from "uuid"
 import AvandaWebSocket from "../types/AvandaWebSocket";
 import AvandaHttpRequest from "../types/AvandaHttpRequest";
 import ip from "ip"
-import {version} from "../package.json"
+const version = '0.3.62'
 import {Out} from "@avanda/cli"
 
 let CLIENTS: WebSocketClient[] = [];
