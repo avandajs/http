@@ -16,18 +16,6 @@ export default  class Controller{
         }
 
     }
-    async get(response: Response,request: Request): Promise<any> {
-        return (await this.model?.first())
-    }
-    async getAll(response: Response,request: Request) {
-        return (await this.model?.all())
-    }
-    async getAllByPage(response: Response,request: Request) {
-        let data = await this.model?.page(request.page)
-        response.totalPages = this.model.totalPages
-        response.currentPage = request.page
-        response.perPage = this.model.perPage;
-        return response.success('Data fetched',data)
-    }
+   
 
 }
