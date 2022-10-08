@@ -4,97 +4,101 @@ import Response from "../response";
 import validate from "../middleware/validate";
 import Controller from "../graph/controller";
 import "reflect-metadata";
-
+import { Model } from "@avanda/orm";
+import Event, { Broadcastable } from "../graph/event";
 
 export default function (props: WatchableProps): any {
-    props.immediate = typeof props.immediate == 'undefined' ? true : !!props.immediate;
+  props.immediate =
+    typeof props.immediate == "undefined" ? true : props.immediate;
 
-    return function (target: Controller, propertyKey: string, descriptor: PropertyDescriptor) {
-        // target.watched[''];
+  return function (
+    target: Controller,
+    propertyKey: string,
+    descriptor: PropertyDescriptor
+  ) {
 
+    // target.watched[''];
 
-        // descriptor.
-        const originalMethod = descriptor.value;
+    // descriptor.
+    const originalMethod = descriptor.value;
 
-        descriptor.value = async function (...args: any) {
+    descriptor.value = async function (...args: any) {
+      let request = args[1] as Request;
 
-            let request = args[1] as Request
-            let response = args[0] as Response
+      let model = args[2] as Model;
+      let response = args[0] as Response;
+      const watchedMetadataKey = request.id + ":watched";
+      let key = propertyKey;
 
-            //check middleware first
+      let hasStartedWatch =
+      Reflect.getOwnMetadata(watchedMetadataKey, target, key) || false;
 
-            let middlewareCheck = await validate(props.middlewares, response, request)
-            // if (middlewareCheck !== null) {
-            //     return function (...args: any) {
-            //         middlewareCheck.responseChanged = true;
-            //         return middlewareCheck
-            //     }
-            // }
+      if (!request.executeWatchable || hasStartedWatch) {
+        return await originalMethod.apply(this, args);
+      }
 
+      if (typeof props.event != "undefined") {
+        
+        let middlewareCheck = await validate(
+          props.middlewares,
+          response,
+          request,
+          model
+        );
+        if (!middlewareCheck) {
+          let event =
+            typeof props.event == "function"
+              ? props.event(request)
+              : props.event;
+          let eventPath = typeof event == "string" ? event : event.path;
 
-            const watchedMetadataKey = request.id + ":watched";
+          let defaultPayload = null;
+          let multipleDefaultPayload = [];
 
-            let key = propertyKey;
-            let resFunc = middlewareCheck ? middlewareCheck : (props.immediate ? originalMethod(...args) : response.success(""));
+          if (event instanceof Broadcastable) {
+            defaultPayload = await event.defaultPayload();
+            multipleDefaultPayload = await event.multipleDefaultPayload();
+          }
 
-            resFunc.responseChanged = false;
+          if (!eventPath) return null;
 
-            type DataStruct = {
-                value: any,
-                response: Response,
-                changed: boolean,
-                firstCall: boolean,
-                reqData: string
+          const eventCallback =  async (payload) => {
+            payload =
+              typeof payload == "string" ? JSON.parse(payload) : payload;
+            request.setPayload(payload);
+            let resp = await request.generateResponseFromGraph(false);
+            response.sendResponseAsWsMessage(resp);
+          }
+
+          request.onClosedCallback = () => {
+            Event.remove(eventPath);
+          };
+
+          Event.on(eventPath, eventCallback);
+
+          // send default payload to client if exist
+          if (defaultPayload) {
+            eventCallback(defaultPayload);
+          }
+
+          if (multipleDefaultPayload?.length) {
+            for (
+              let index = 0;
+              index < multipleDefaultPayload.length;
+              index++
+            ) {
+              const payload = multipleDefaultPayload[index];
+              setTimeout(() => eventCallback(payload), 3000 * index); //send notification in 3 seconds interval
             }
+          }
+        } else {
+          response.sendResponseAsWsMessage(middlewareCheck);
+        }
+      } else {
+        return null;
+      }
+    };
 
-            let prev: DataStruct = Reflect.getOwnMetadata(watchedMetadataKey, target, key) || {
-                value: null,
-                firstCall: true,
-                changed: true,
-                response: resFunc,
-                reqData: JSON.stringify(request.data ?? '')
-            };
-            //check for middlewares validity
-
-
-            let reqData = JSON.stringify(request.data ?? '')
-            let forceNewRes = prev.reqData !== reqData
-
-            let responseToShow: Response = (forceNewRes && !middlewareCheck) ? originalMethod(...args):prev.response;
-
-            // get watchable function
-            let watching = JSON.stringify(await props.watch(request));
-
-
-            if (((prev.firstCall && props.immediate) || prev.value !== watching) && !forceNewRes && !middlewareCheck) {
-                console.log("Something changed>>>>>>>")
-                responseToShow = await originalMethod.apply(this, args)
-                prev.changed = true;
-            } else {
-                prev.changed = false;
-            }
-
-            if(middlewareCheck && prev.firstCall){
-                responseToShow.responseChanged = true;
-                prev.changed = true;
-                console.log("Sending middleware response >>>");
-            }
-
-            props.immediate = false;
-            prev.firstCall = false;
-            prev.reqData = reqData;
-
-            //ignore next line
-            prev.value = watching;
-            prev.response = responseToShow
-
-            responseToShow.responseChanged = prev.changed;
-
-            Reflect.defineMetadata(watchedMetadataKey, prev, target, key);
-
-            return responseToShow;
-        };
-
-        return descriptor;
-    }
+    return descriptor;
+  };
 }

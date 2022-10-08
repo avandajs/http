@@ -1,5 +1,6 @@
 import Controller from "./graph/controller";
 import Middleware from "./middleware/middleware";
+import Event, { EventStorageDriver,Broadcastable } from "./graph/event";
 import Query from "./graph/query";
 import Request from "./request";
 import Response from "./response";
@@ -13,7 +14,10 @@ export {
     Middleware,
     Request,
     Response,
+    Event,
     Query,
+    EventStorageDriver,
+    Broadcastable,
     Get,
     Post,
     Option,

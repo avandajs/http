@@ -1,12 +1,15 @@
 import { DataOf, Model } from "@avanda/orm";
 import EventEmitter from "events";
-import { type } from "os";
+import Request from "../request";
+import Query from "./query";
+
+process.setMaxListeners(0);
 
 /*
  * GOALS:
  * --
  */
-
+EventEmitter.defaultMaxListeners = 15
 
 export class EventStorageDriver {
   model?: any;
@@ -18,104 +21,78 @@ export class EventStorageDriver {
 }
 
 export default class Event {
-  static driver?: EventStorageDriver;
-  static Event = new EventEmitter();
-  static eventQueue: DataOf<Model>[] = []; // fetch this from db
-  static eventListeners: { [event: string]: (...payload) => void }[] = [];
+  private static EventEmitter: EventEmitter = new EventEmitter();
+  private static remoteEventServiceUrl: string;
+  
 
-  static async init() {
-    if (!Event.driver) throw new Error("Event storage driver not set");
-    try {
-      this.eventQueue = await new Event.driver.model().setPerPage(1000000).all();
-    } catch (e) {
-      throw new Error(e.message);
-    }
+  static setRemoteEventServiceUrl(url: string){
+    Event.remoteEventServiceUrl = url;
   }
 
+
+
+
+  constructor(){
+
+  }
   static setDriver(driver: EventStorageDriver) {
-    Event.driver = driver;
   }
+
+  static async emitEvent(event: string,payload: any[]){
+    Event.EventEmitter.emit(event,...payload)
+  }
+
+
 
   static async emit(event: string, ...payload: any) {
-    //   check if we have events listening in queue
-    if (Event.eventListeners.length) {
-      let foundEvent = false;
-      for (const listener of Event.eventListeners) {
-        if (typeof listener[event] != "undefined") {
-          // immediately call the callback with the payload
-          listener[event](...payload);
-          foundEvent = true;
-        }
-      }
-      if(!foundEvent){
-        await new Event.driver.model().create({
-          [Event.driver.eventKey]: event,
-          [Event.driver.payloadKey]: JSON.stringify(payload[0])
-      })
-      }
-    }else {
-        await new Event.driver.model().create({
-            [Event.driver.eventKey]: event,
-            [Event.driver.payloadKey]: JSON.stringify(payload[0])
-        })
-    }
-    // if(typeof Event.eventListeners[event] != 'undefined'){
-    //     // immediately call the callback with the payload
-    //     Event.eventListeners[event](...payload);
-    // } else {
-    //     // Log this event to database, will be checked next time the on() function is called
+    console.log(">>>>Emitting event: " + event)
 
-    // }
+    console.log(">> remote server: ", Event.remoteEventServiceUrl)
+    if(Event.remoteEventServiceUrl){
+      try{
+        let uri = Event.remoteEventServiceUrl + Query.eventPath;
+        let res = await new Request().post(uri,{
+          payload: JSON.stringify(payload),
+          event
+        })
+      } catch(e){
+        console.log({e});
+      }
+    }else{
+      Event.emitEvent(event,payload)
+    }
+    
   }
 
-  static async on(event: string, callback: (...payload: any) => void,fallBack?: () => void) {
+  static async on(event: string, callback: (...payload: any) => void) {
     //   check if event is in database logged
-    let storedEvents = await new Event.driver.model()
-      .where({ [Event.driver.eventKey]: event })
-      .all();
-    if (storedEvents && storedEvents.length > 0) {
-      for (const storedEvent of storedEvents) {
-        callback(storedEvent[Event.driver.payloadKey]);
-      }
-      // delete all event from queue
-      await new Event.driver.model()
-        .where({ [Event.driver.eventKey]: event })
-        .delete();
-    }else{
-      fallBack && fallBack();
-    }
-
-    // add event to queue
-    Event.eventListeners.push({
-      [event]: callback,
-    });
+    console.log(">>>>Listening to event: " + event)
+    Event.EventEmitter.addListener(event,callback).setMaxListeners(1)
   }
 
   static remove(event: string){
-    if (Event.eventListeners.length) {
-      for (let index = 0; index < Event.eventListeners.length; index++) {
-        const listener = Event.eventListeners[index];
-        if (typeof listener[event] != "undefined") {
-          // immediately call the callback with the payload
-          Event.eventListeners.splice(index,1)
-          console.log('removing event:  ', event)
-        }
-      }
-    }
+    console.log(">>>>>Removing event: ", event)
+    Event.EventEmitter.removeAllListeners(event)
   }
 }
 
 export abstract class Broadcastable{
   abstract get path(): string
-  abstract get payload(): any
+  abstract payload(): Promise<any> | any
 
   defaultPayload(): Promise<any> | null {
     return null;
   }
 
+
+
+  multipleDefaultPayload(): Promise<any[]> | [] {
+    return [];
+  }
+
   
-  broadcast(){
-    Event.emit(this.path,this.payload)
+  async broadcast(){
+    Event.emit(this.path,await this.payload())
   }
 }
 

@@ -28,14 +28,15 @@ const express_fileupload_1 = __importDefault(require("express-fileupload"));
 const cors_1 = __importDefault(require("cors"));
 const http = __importStar(require("http"));
 const index_1 = require("../index");
-const lodash_1 = require("lodash");
 const ws_1 = __importDefault(require("ws"));
 const query_string_1 = __importDefault(require("query-string"));
 const uuid_1 = require("uuid");
 const ip_1 = __importDefault(require("ip"));
-const version = '0.3.62';
+const version = "0.3.102";
 const cli_1 = require("@avanda/cli");
-let CLIENTS = [];
+const clients_1 = __importDefault(require("./clients"));
+const event_1 = __importDefault(require("./event"));
+// let CLIENTS: WebSocketClient[] = [];
 /*
  *
  * The keys in the json/Service objects
@@ -48,9 +49,10 @@ class Query {
     constructor(serverConfig) {
         this.app = (0, express_1.default)();
         this.port = 8080;
-        this.watcherLatency = 3000;
-        this.httpPath = '/graph';
-        this.websocketPath = '/watch';
+        this.watcherLatency = 1000;
+        this.watcherIntervalInstance = null;
+        this.httpPath = "/graph";
+        this.websocketPath = "/watch";
         this.corsRejected = true;
         this.models = {};
         this.controllers = {};
@@ -60,23 +62,17 @@ class Query {
         this.httpPath = serverConfig.rootPath;
         return this;
     }
-    static responseToObject(response) {
-        if (response instanceof index_1.Response) {
-            return Object.assign({ msg: response.message, data: response.data, status_code: response.statusCode, current_page: response.currentPage, per_page: response.perPage }, (response.totalPages && { total_pages: response.totalPages }));
-        }
-        else {
-            return Object.assign({ msg: 'Auto-generated message', data: response, status_code: 200, current_page: response.currentPage, per_page: response.perPage }, (response.totalPages && { totalPages: response.totalPages }));
-        }
-    }
-    execute(models, controllers) {
+    execute(models, controllers, eventDriver) {
         this.models = models;
         this.controllers = controllers;
-        this.app.use(bodyParser.json({ limit: '100mb' }));
-        this.app.use(bodyParser.urlencoded({ extended: true, limit: '100mb' }));
+        event_1.default.setDriver(eventDriver);
+        this.app.use(bodyParser.json({ limit: "100mb" }));
+        this.app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
         this.app.use((0, cors_1.default)({
             credentials: true,
             origin: (origin, callback) => {
-                if (!origin || this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                if (!origin ||
+                    this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
                     this.corsRejected = false;
                     callback(null, true);
                 }
@@ -84,29 +80,48 @@ class Query {
                     this.corsRejected = true;
                     callback(null, true);
                 }
-            }
+            },
         }));
         this.app.use((0, express_fileupload_1.default)({
-            useTempFiles: true
+            useTempFiles: true,
         }));
-        this.app.use(express_1.default.static('public'));
-        // this.app.request
+        this.app.use(express_1.default.static("public"));
+        this.app.post(Query.eventPath, async (req, res) => {
+            let { payload, event } = req.body;
+            if (!payload || !event)
+                return;
+            try {
+                payload = JSON.parse(payload);
+                event_1.default.emitEvent(event, payload);
+                res.json({ event, status: "emitted" });
+            }
+            catch (e) {
+                res.json({ error: e });
+            }
+        });
         this.app.all(this.httpPath, async (req, res) => {
             let query = req.query.query;
+            let request = new index_1.Request();
+            request.controllers = this.controllers;
+            request.models = this.models;
+            request.method = req.method;
             if (this.corsRejected) {
                 res.json({
                     msg: null,
                     data: null,
                     status_code: 500,
-                    total_pages: 0
+                    total_pages: 0,
                 });
                 return;
             }
             else if (query) {
                 query = JSON.parse(query);
+                request.service = query;
+                request.expressReq = req;
+                request.expressRes = res;
                 if (query) {
-                    let response = await this.generateResponse(query, req, res);
-                    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token, Origin, Authorization');
+                    let response = await request.generateResponseFromGraph(false);
+                    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
                     if (response.statusCode) {
                         res.status(parseInt(response.statusCode));
                     }
@@ -114,7 +129,7 @@ class Query {
                     return;
                 }
             }
-            res.send('Hello World!');
+            res.send("Hello World!");
         });
         //websocket watch
         this.app.all(this.websocketPath);
@@ -124,25 +139,52 @@ class Query {
         this.startWebSocket(this.server, this.websocketPath);
         return this;
     }
+    static responseToObject(response) {
+        var _a, _b;
+        if (response instanceof index_1.Response) {
+            return {
+                msg: response.message,
+                data: response.data,
+                status_code: response.statusCode,
+                current_page: response.currentPage,
+                per_page: response.perPage,
+                total_pages: (_a = response === null || response === void 0 ? void 0 : response.totalPages) !== null && _a !== void 0 ? _a : 1,
+            };
+        }
+        else {
+            return {
+                msg: "Auto-generated message",
+                data: response,
+                status_code: 200,
+                current_page: response.currentPage,
+                per_page: response.perPage,
+                total_pages: (_b = response === null || response === void 0 ? void 0 : response.totalPages) !== null && _b !== void 0 ? _b : 1,
+            };
+        }
+    }
     getServerInstance(req, res) {
         // this.app()
         return this.server;
     }
     async sendResponseToClient(client) {
-        let res = await this.generateResponse(client.service, client.req, client.res);
-        // console.log({res})
-        if (res === null || res === void 0 ? void 0 : res.responseChanged) {
-            client.client.send(JSON.stringify(Query.responseToObject(res)));
+        if (client.busy) {
+            return;
         }
-    }
-    async startWatchingFunctions() {
-        for (let index in CLIENTS) {
-            this.sendResponseToClient(CLIENTS[index]);
-        }
+        client.busy = true;
+        await client.request.generateResponseFromGraph(true, client.service, true, undefined, undefined, undefined, "watcher", client.client);
+        client.busy = false;
     }
     handleConnectionAbortion(websocketConnection) {
-        CLIENTS = CLIENTS.filter(client => client.client.clientId != websocketConnection.clientId);
+        let closedClient = clients_1.default.activeClients.find((client) => client.client.clientId == websocketConnection.clientId);
+        if (typeof closedClient.request.onClosedCallback == "function")
+            closedClient.request.onClosedCallback();
+        clients_1.default.activeClients = clients_1.default.activeClients.filter((client) => client.client.clientId != websocketConnection.clientId);
         console.log("disconnected client: " + websocketConnection.clientId);
+        if (clients_1.default.activeClients.length < 1 && this.watcherIntervalInstance) {
+            // stop watch interval
+            clearInterval(this.watcherIntervalInstance);
+            this.watcherIntervalInstance = null;
+        }
     }
     startWebSocket(express, path) {
         //
@@ -162,31 +204,32 @@ class Query {
             const clientId = (0, uuid_1.v4)();
             let request = Object.assign(Object.create(Object.getPrototypeOf(this.app.request)), this.app.request);
             let response = Object.assign(Object.create(Object.getPrototypeOf(this.app.response)), this.app.response);
-            request.body = connectionParams.data ? JSON.parse(connectionParams.data) : undefined;
+            let avandaRequest = new index_1.Request();
+            request.body = connectionParams.data
+                ? JSON.parse(connectionParams.data)
+                : undefined;
             request.headers = connectionRequest.headers;
             request.statusCode = connectionRequest.statusCode;
             request.statusMessage = connectionRequest.statusMessage;
             request.requestId = clientId;
             const service = JSON.parse(connectionParams.query);
             websocketConnection.clientId = clientId; //
-            websocketConnection.clientIndex = CLIENTS.length; //
+            websocketConnection.clientIndex = clients_1.default.activeClients.length; //
             websocketConnection.service = service; //
-            CLIENTS.push({
-                client: websocketConnection,
-                id: websocketConnection.clientId,
-                service: service,
-                req: request,
-                res: response
-            });
-            // websocketConnection.
-            console.log(">> new connection", { clientId });
+            avandaRequest.service = service;
+            avandaRequest.expressReq = request;
+            avandaRequest.expressRes = response;
+            avandaRequest.controllers = this.controllers;
+            avandaRequest.models = this.models;
+            // avandaRequest.method
             // NOTE: connectParams are not used here but good to understand how to get
             // to them if you need to pass data with the connection to identify it (e.g., a userId).
             websocketConnection.on("message", async (message) => {
-                console.log(">>>New message to: " + websocketConnection.clientId + ">>>> " + message);
-                request.body = message ? JSON.parse(message) : {};
-                let res = await this.generateResponse(websocketConnection.service, request, response);
-                // console.log({request})
+                // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
+                request.body = message
+                    ? JSON.parse(message)
+                    : {};
+                let res = await avandaRequest.generateResponseFromGraph(false);
                 let obj = Query.responseToObject(res);
                 websocketConnection.send(JSON.stringify(obj));
             });
@@ -196,18 +239,31 @@ class Query {
             websocketConnection.on("end", (client) => {
                 this.handleConnectionAbortion(websocketConnection);
             });
+            //
             websocketConnection.on("aborted", (client) => {
                 this.handleConnectionAbortion(websocketConnection);
             });
-            setInterval(() => {
-                this.startWatchingFunctions();
-            }, this.watcherLatency);
+            let client = {
+                client: websocketConnection,
+                id: websocketConnection.clientId,
+                service: service,
+                req: request,
+                res: response,
+                busy: false,
+                request: avandaRequest,
+            };
+            clients_1.default.activeClients.push(client);
+            console.log(">> new connection", {
+                clientId,
+                CLIENTS: clients_1.default.activeClients.length,
+            });
+            this.sendResponseToClient(client);
         });
         return websocketServer;
     }
     listen() {
         if (!this.app)
-            throw new Error('Execute before you listen');
+            throw new Error("Execute before you listen");
         let ipAddress = ip_1.default.address("public");
         // network.
         this.server.listen(this.port, () => {
@@ -217,158 +273,6 @@ class Query {
 > Network:  http://${ipAddress}:${this.port}/`);
         });
         return this.server;
-    }
-    async extractNeededDataFromArray(data, columns, req, res, rootService, toExclude) {
-        var _a, _b, _c;
-        let ret = [];
-        if (Array.isArray(data)) {
-            for (let index in data) {
-                let datum;
-                if ((0, lodash_1.isPlainObject)(data[index])) {
-                    if (!datum)
-                        datum = {};
-                    if (columns.length) {
-                        for (let col of columns) {
-                            if (typeof col == 'string' || (col.t && col.t == 'c')) {
-                                col = typeof col == 'string' ? col : col.n;
-                                //
-                                if ((_a = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _a === void 0 ? void 0 : _a.call(toExclude, col.trim()))
-                                    continue;
-                                // if (this)
-                                data[index] = JSON.parse(JSON.stringify(data[index]));
-                                if (col in data[index]) {
-                                    datum[col] = data[index][col];
-                                }
-                            }
-                            else {
-                                let service = col;
-                                col = col.a ? col.a : col.n.toLowerCase();
-                                datum[col] = await this.generateResponse(service, req, res, false, data[index], rootService);
-                                //    await this.generateResponse(service, req, res,false)
-                                //    process the sub-service here
-                            }
-                        }
-                    }
-                    else {
-                        //    return all data if no column was specified
-                        datum = (0, lodash_1.omit)(data[index], toExclude !== null && toExclude !== void 0 ? toExclude : []);
-                    }
-                }
-                else {
-                    //    item in this array is not object
-                    datum = data[index];
-                }
-                ret.push(datum);
-            }
-        }
-        else {
-            let datum = {};
-            if (columns.length) {
-                for (const service of columns) {
-                    if (typeof service == 'string' || (service.t && service.t === 'c')) {
-                        let column = typeof service == 'string' ? service : service.n;
-                        if ((_b = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _b === void 0 ? void 0 : _b.call(toExclude, column.trim()))
-                            continue;
-                        datum[column] = (_c = data[column]) !== null && _c !== void 0 ? _c : null;
-                    }
-                    else {
-                        datum[service.a ? service.a : service.n.toLowerCase()] = await this.generateResponse(service, req, res, false, data, rootService);
-                    }
-                }
-            }
-            else {
-                if ((0, lodash_1.isPlainObject)(data))
-                    datum = (0, lodash_1.omit)(data, toExclude !== null && toExclude !== void 0 ? toExclude : []);
-                else
-                    datum = data;
-            }
-            ret = datum;
-        }
-        return ret;
-    }
-    async getController(query) {
-        let name = query.n;
-        return new this.controllers[name](await this.connection);
-    }
-    async generateResponse(query, req, res, isRoot = true, parentData, parentService, _controller) {
-        let name = query.n;
-        let type = query.t;
-        let children = query.c;
-        if (isRoot) { //get root autolink state
-            this.autoLink = query.al;
-        }
-        let data = null;
-        if (!(name in this.controllers)) {
-            throw new Error('Invalid controller name: ' + name);
-        }
-        let controller = _controller !== null && _controller !== void 0 ? _controller : await this.getController(query);
-        let toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;
-        let controllerResponse = await this.getServiceFncResponse(controller, req, res, name, query, parentData, parentService);
-        if (typeof controllerResponse == 'function' && !(controllerResponse instanceof index_1.Response))
-            //will be function if returned from middleware decorator
-            controllerResponse = await new controllerResponse();
-        //
-        if (!(controllerResponse instanceof index_1.Response) && isRoot) {
-            //convert raw returned data to response for the root
-            controllerResponse = await (new index_1.Response()).success('', controllerResponse);
-        }
-        if (isRoot && controllerResponse.status_code > 299) { //if is root, and response doesn't look success, return the root response only
-            return controllerResponse;
-        }
-        let controllerData = controllerResponse instanceof index_1.Response ? await controllerResponse.data : await controllerResponse;
-        if (children && controllerData) { //
-            data = await this.extractNeededDataFromArray(JSON.parse(JSON.stringify(controllerData, null, 2)), children, req, res, query, toExclude);
-            //
-        }
-        if (isRoot && controllerResponse instanceof index_1.Response) {
-            controllerResponse.data = data;
-            return controllerResponse;
-        }
-        return data;
-    }
-    async getServiceFncResponse(controller, req, res, serviceName, service, parentData, parentService) {
-        // get Controller's specified function
-        // initiate controller
-        let fnc = service.f ? service.f : 'get';
-        let model = null;
-        let request = new index_1.Request();
-        request.method = req.method;
-        request.data = req.body;
-        request.files = req.files;
-        request.args = parentData;
-        request.headers = req.headers;
-        request.params = service.pr;
-        request.page = service.p;
-        request.id = req.requestId;
-        let filters = {};
-        if (this.models && (serviceName in this.models)) {
-            model = new this.models[serviceName](await this.connection);
-            if (this.autoLink && parentData) { //auto-link enabled
-                //find secondary key in parent data
-                let parent_key = (0, lodash_1.snakeCase)(parentService.n) + '_id';
-                let self_key = (0, lodash_1.snakeCase)(serviceName) + '_id';
-                if (typeof parentData[self_key] != 'undefined') {
-                    //    parent has 1 to 1 relationship
-                    model.where({ id: parentData[self_key] });
-                }
-                else {
-                    // Parent has 1 to many relationship
-                    if (typeof parentData['id'] == 'undefined') {
-                        throw new Error(`${parentService.n} does not return property "id" to link ${service.n}'s secondary key ${parent_key} with`);
-                    }
-                    model.where({ [parent_key]: parentData['id'] });
-                }
-            }
-            if (service.ft) {
-                //apply filters
-                model = Query.bindFilters(model, service.ft);
-            }
-        }
-        //set the model
-        controller.model = model;
-        if (typeof controller[fnc] != 'function')
-            throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`);
-        return await controller[fnc](new index_1.Response(), request);
     }
     static bindFilters(model, filters) {
         var _a;
@@ -384,26 +288,26 @@ class Query {
                 model.where({ [key]: value });
             },
             "=": (key, value, model) => {
-                operators['=='](key, value, model);
+                operators["=="](key, value, model);
             },
             "!=": (key, value, model) => {
                 model.whereRaw(`${key} != ${value}`);
             },
-            "NULL": (key, value, model) => {
+            NULL: (key, value, model) => {
                 model.whereColIsNull(key);
             },
-            "NOTNULL": (key, value, model) => {
+            NOTNULL: (key, value, model) => {
                 model.whereColIsNotNull(key);
             },
-            "MATCHES": (key, value, model) => {
+            MATCHES: (key, value, model) => {
                 model.whereColumns(key).matches(value);
             },
-            "LIKES": (key, value, model) => {
+            LIKES: (key, value, model) => {
                 model.where(key).like(`%${value}%`);
             },
-            "NOT": (key, value, model) => {
+            NOT: (key, value, model) => {
                 model.where(key).notLike("%$value%");
-            }
+            },
         };
         for (let key in filters) {
             let filter = filters[key];
@@ -415,3 +319,4 @@ class Query {
     }
 }
 exports.default = Query;
+Query.eventPath = "/event";

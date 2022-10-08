@@ -18,7 +18,7 @@ const request_1 = __importDefault(require("./request"));
 const watchable_1 = __importDefault(require("./verbs/watchable"));
 class Test extends controller_1.default {
     async get(response, request) {
-        return super.get(response, request);
+        return response.singleData();
     }
 }
 __decorate([
