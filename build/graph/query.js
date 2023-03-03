@@ -57,7 +57,6 @@ class Query {
         this.models = {};
         this.controllers = {};
         this.serverConfig = serverConfig;
-        this.connection = serverConfig.connection;
         this.port = parseInt(serverConfig.port);
         this.httpPath = serverConfig.rootPath;
         return this;

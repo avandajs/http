@@ -14,6 +14,7 @@ class Request {
         this.attrs = {};
         this.eventPayload = {};
         this.caches = {};
+        this.headers = {};
         this.controllers = {};
         this.models = {};
         this.executeWatchable = true;
@@ -112,6 +113,7 @@ class Request {
         this.data = this.expressReq.body;
         this.files = this.expressReq.files;
         this.args = parentData;
+        this.parent = parentData;
         this.headers = this.expressReq.headers;
         this.params = service.pr;
         this.page = service.p;
@@ -123,10 +125,8 @@ class Request {
         let cache_key = null;
         if ((_b = this.models) === null || _b === void 0 ? void 0 : _b.hasOwnProperty(serviceName)) {
             model = new this.models[serviceName](await this.connection);
+            // model.
             if (service.al) {
-                // if(typeof funcResponse == "object" && typeof funcResponse['id'] != "undefined"){
-                //   cache_key = col + "_" + funcResponse['id'];
-                // }
                 let parent_key = parentService
                     ? (0, lodash_1.snakeCase)(parentService.n) + "_id"
                     : null;

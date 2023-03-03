@@ -48,7 +48,7 @@ function default_1(props) {
                     let event = typeof props.event == "function"
                         ? props.event(request)
                         : props.event;
-                    let eventPath = typeof event == "string" ? event : event.path;
+                    let eventPath = typeof event == "string" ? event : event.channel;
                     let defaultPayload = null;
                     let multipleDefaultPayload = [];
                     if (event instanceof event_1.Broadcastable) {

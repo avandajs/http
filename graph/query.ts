@@ -53,7 +53,6 @@ export default class Query {
 
   constructor(serverConfig: serverConfig) {
     this.serverConfig = serverConfig;
-    this.connection = serverConfig.connection;
     this.port = parseInt(serverConfig.port as string);
     this.httpPath = serverConfig.rootPath;
 

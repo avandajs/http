@@ -19,6 +19,7 @@ export default class Request {
   page: number;
   isWatcher: boolean = false;
   args?: Datum<any>;
+  parent?: Datum<any>;
   attrs?: Datum<any> = {};
   eventPayload?: Datum<any> = {};
   params?: Datum<any>;
@@ -27,7 +28,7 @@ export default class Request {
   query?: Datum<any>;
   columns?: Datum<any>;
   caches: Datum<any> = {};
-  headers?: Datum<any>;
+  headers?: Datum<any> = {};
   model?: Model;
   service?: Service;
   controllers: { [model: string]: typeof Controller } = {};
@@ -173,6 +174,7 @@ export default class Request {
     this.data = this.expressReq.body;
     this.files = this.expressReq.files;
     this.args = parentData;
+    this.parent = parentData;
     this.headers = this.expressReq.headers;
     this.params = service.pr;
     this.page = service.p;
@@ -187,10 +189,8 @@ export default class Request {
 
     if (this.models?.hasOwnProperty(serviceName)) {
       model = new this.models[serviceName](await this.connection);
+      // model.
       if (service.al) {
-        // if(typeof funcResponse == "object" && typeof funcResponse['id'] != "undefined"){
-        //   cache_key = col + "_" + funcResponse['id'];
-        // }
         let parent_key = parentService
           ? snakeCase(parentService.n) + "_id"
           : null;

@@ -50,7 +50,7 @@ export default function (props: WatchableProps): any {
             typeof props.event == "function"
               ? props.event(request)
               : props.event;
-          let eventPath = typeof event == "string" ? event : event.path;
+          let eventPath = typeof event == "string" ? event : event.channel;
 
           let defaultPayload = null;
           let multipleDefaultPayload = [];

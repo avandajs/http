@@ -22,13 +22,11 @@ class EventStorageDriver {
 }
 exports.EventStorageDriver = EventStorageDriver;
 class Event {
-    constructor() {
-    }
+    constructor() { }
     static setRemoteEventServiceUrl(url) {
         Event.remoteEventServiceUrl = url;
     }
-    static setDriver(driver) {
-    }
+    static setDriver(driver) { }
     static async emitEvent(event, payload) {
         Event.EventEmitter.emit(event, ...payload);
     }
@@ -40,7 +38,7 @@ class Event {
                 let uri = Event.remoteEventServiceUrl + query_1.default.eventPath;
                 let res = await new request_1.default().post(uri, {
                     payload: JSON.stringify(payload),
-                    event
+                    event,
                 });
             }
             catch (e) {
@@ -70,8 +68,8 @@ class Broadcastable {
     multipleDefaultPayload() {
         return [];
     }
-    async broadcast() {
-        Event.emit(this.path, await this.payload());
+    async broadcast(payload) {
+        Event.emit(this.channel, payload ? await payload : await this.payload());
     }
 }
 exports.Broadcastable = Broadcastable;
