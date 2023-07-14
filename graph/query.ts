@@ -111,18 +111,19 @@ export default class Query {
     );
 
     this.app.all(
-      '/rest/:service/:func',
+      "/rest/:service/:func",
       async (req: AvandaHttpRequest, res: express.Response) => {
-
         let service: Service = {
-          f: req.params['func'],
-          t: 's',
-          n: req.params['service'],
+          f: req.params["func"],
+          t: "s",
+          n: req.params["service"],
           pr: req.query as {},
           p: 1,
-        }
-        this.renderServiceFromQuery(req,res,service)
-      })
+        };
+        this.renderServiceFromQuery(req, res, service);
+        return;
+      }
+    );
 
     // /users/:userId/books/:bookId
 
@@ -130,7 +131,6 @@ export default class Query {
       this.httpPath,
       async (req: AvandaHttpRequest, res: express.Response) => {
         let query = req.query.query as string;
-        
 
         if (this.corsRejected) {
           res.json({
@@ -142,7 +142,8 @@ export default class Query {
           return;
         } else if (query) {
           let service = JSON.parse(query) as Service;
-          this.renderServiceFromQuery(req,res,service)
+          this.renderServiceFromQuery(req, res, service);
+          return;
         }
         res.send("Hello World!");
       }
@@ -160,28 +161,32 @@ export default class Query {
 
     return this;
   }
-  async renderServiceFromQuery( req: AvandaHttpRequest, res: express.Response, service?: Service,) {
+  async renderServiceFromQuery(
+    req: AvandaHttpRequest,
+    res: express.Response,
+    service?: Service
+  ) {
     let request = new Request();
 
-        request.controllers = this.controllers;
-        request.models = this.models;
-        request.method = req.method;
-          
-          request.service = service;
-          request.expressReq = req;
-          request.expressRes = res;
-          if (service) {
-            let response = await request.generateResponseFromGraph(false);
-            res.setHeader(
-              "Access-Control-Allow-Headers",
-              "Content-Type, X-Auth-Token, Origin, Authorization"
-            );
-            if (response.statusCode) {
-              res.status(parseInt(response.statusCode as unknown as string));
-            }
-            res.json(Query.responseToObject(response));
-            return;
-          }
+    request.controllers = this.controllers;
+    request.models = this.models;
+    request.method = req.method;
+
+    request.service = service;
+    request.expressReq = req;
+    request.expressRes = res;
+    if (service) {
+      let response = await request.generateResponseFromGraph(false);
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, X-Auth-Token, Origin, Authorization"
+      );
+      if (response.statusCode) {
+        res.status(parseInt(response.statusCode as unknown as string));
+      }
+      res.json(Query.responseToObject(response));
+      return;
+    }
     throw new Error("Method not implemented.");
   }
 

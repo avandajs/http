@@ -98,15 +98,16 @@ class Query {
                 res.json({ error: e });
             }
         });
-        this.app.all('/rest/:service/:func', async (req, res) => {
+        this.app.all("/rest/:service/:func", async (req, res) => {
             let service = {
-                f: req.params['func'],
-                t: 's',
-                n: req.params['service'],
+                f: req.params["func"],
+                t: "s",
+                n: req.params["service"],
                 pr: req.query,
                 p: 1,
             };
             this.renderServiceFromQuery(req, res, service);
+            return;
         });
         // /users/:userId/books/:bookId
         this.app.all(this.httpPath, async (req, res) => {
@@ -123,6 +124,7 @@ class Query {
             else if (query) {
                 let service = JSON.parse(query);
                 this.renderServiceFromQuery(req, res, service);
+                return;
             }
             res.send("Hello World!");
         });
