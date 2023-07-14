@@ -23,6 +23,9 @@ class Request {
         let name = query.n;
         return new this.controllers[name](await this.connection);
     }
+    setTimeOut(milliseconds) {
+        this.timeout = milliseconds;
+    }
     async extractNeededDataFromArray(data, columns, rootService, toExclude, _for) {
         var _a, _b, _c;
         let ret = [];
@@ -244,6 +247,10 @@ class Request {
         var _a, _b;
         return key ? (_b = (_a = this.data) === null || _a === void 0 ? void 0 : _a[key]) !== null && _b !== void 0 ? _b : null : null;
     }
+    getObjectData(key) {
+        var _a;
+        return key ? JSON.parse((_a = this.data) === null || _a === void 0 ? void 0 : _a[key]) : null;
+    }
     setData(data) {
         this.data = data;
         return this;
@@ -298,6 +305,7 @@ class Request {
     async get(url) {
         return await this.makeRequest(url, async (url) => await axios_1.default.get(url, {
             headers: this.headers,
+            timeout: this.timeout
         }));
     }
     async post(url, data) {
@@ -305,6 +313,7 @@ class Request {
             var _a;
             return await axios_1.default.post(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
+                timeout: this.timeout
             });
         });
     }
@@ -313,6 +322,7 @@ class Request {
             var _a;
             return await axios_1.default.patch(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
+                timeout: this.timeout
             });
         });
     }
@@ -321,6 +331,7 @@ class Request {
             var _a;
             return await axios_1.default.put(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
+                timeout: this.timeout
             });
         });
     }

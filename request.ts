@@ -35,6 +35,7 @@ export default class Request {
   models: { [model: string]: any } = {};
   connection: Promise<Sequelize> | Sequelize;
   expressReq: AvandaHttpRequest;
+  timeout?: number;
   expressRes: express.Response;
   executeWatchable: boolean = true;
   onClosedCallback?: () => void;
@@ -44,6 +45,10 @@ export default class Request {
   private async getController(query: Service): Promise<Controller> {
     let name = query.n;
     return new this.controllers[name](await this.connection);
+  }
+
+  setTimeOut(milliseconds: number){
+    this.timeout = milliseconds;
   }
 
   private async extractNeededDataFromArray(
@@ -351,6 +356,9 @@ export default class Request {
   getData<R>(key: string): R | null {
     return key ? this.data?.[key] ?? null : null;
   }
+  getObjectData<R>(key: string): R | undefined {
+    return key ? JSON.parse(this.data?.[key]) as R : null;
+  }
   setData(data: Datum<any>): this {
     this.data = data;
     return this;
@@ -413,6 +421,7 @@ export default class Request {
       async (url) =>
         await axios.get(url, {
           headers: this.headers,
+          timeout: this.timeout
         })
     );
   }
@@ -423,6 +432,7 @@ export default class Request {
       async (url) =>
         await axios.post(url, data ?? this.data ?? {}, {
           headers: this.headers,
+          timeout: this.timeout
         })
     );
   }
@@ -432,6 +442,7 @@ export default class Request {
       async (url) =>
         await axios.patch(url, data ?? this.data ?? {}, {
           headers: this.headers,
+          timeout: this.timeout
         })
     );
   }
@@ -441,6 +452,7 @@ export default class Request {
       async (url) =>
         await axios.put(url, data ?? this.data ?? {}, {
           headers: this.headers,
+          timeout: this.timeout
         })
     );
   }

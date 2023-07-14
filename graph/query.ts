@@ -109,41 +109,40 @@ export default class Query {
         }
       }
     );
+
+    this.app.all(
+      '/rest/:service/:func',
+      async (req: AvandaHttpRequest, res: express.Response) => {
+
+        let service: Service = {
+          f: req.params['func'],
+          t: 's',
+          n: req.params['service'],
+          pr: req.query as {},
+          p: 1,
+        }
+        this.renderServiceFromQuery(req,res,service)
+      })
+
+    // /users/:userId/books/:bookId
+
     this.app.all(
       this.httpPath,
       async (req: AvandaHttpRequest, res: express.Response) => {
         let query = req.query.query as string;
-        let request = new Request();
-
-        request.controllers = this.controllers;
-        request.models = this.models;
-        request.method = req.method;
+        
 
         if (this.corsRejected) {
           res.json({
-            msg: null,
+            msg: "CORS Rejected",
             data: null,
-            status_code: 500,
+            status: 500,
             total_pages: 0,
           });
           return;
         } else if (query) {
-          query = JSON.parse(query);
-          request.service = query as unknown as Service;
-          request.expressReq = req;
-          request.expressRes = res;
-          if (query) {
-            let response = await request.generateResponseFromGraph(false);
-            res.setHeader(
-              "Access-Control-Allow-Headers",
-              "Content-Type, X-Auth-Token, Origin, Authorization"
-            );
-            if (response.statusCode) {
-              res.status(parseInt(response.statusCode as unknown as string));
-            }
-            res.json(Query.responseToObject(response));
-            return;
-          }
+          let service = JSON.parse(query) as Service;
+          this.renderServiceFromQuery(req,res,service)
         }
         res.send("Hello World!");
       }
@@ -160,6 +159,30 @@ export default class Query {
     this.startWebSocket(this.server, this.websocketPath);
 
     return this;
+  }
+  async renderServiceFromQuery( req: AvandaHttpRequest, res: express.Response, service?: Service,) {
+    let request = new Request();
+
+        request.controllers = this.controllers;
+        request.models = this.models;
+        request.method = req.method;
+          
+          request.service = service;
+          request.expressReq = req;
+          request.expressRes = res;
+          if (service) {
+            let response = await request.generateResponseFromGraph(false);
+            res.setHeader(
+              "Access-Control-Allow-Headers",
+              "Content-Type, X-Auth-Token, Origin, Authorization"
+            );
+            if (response.statusCode) {
+              res.status(parseInt(response.statusCode as unknown as string));
+            }
+            res.json(Query.responseToObject(response));
+            return;
+          }
+    throw new Error("Method not implemented.");
   }
 
   static responseToObject(response: Response | any) {

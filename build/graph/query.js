@@ -98,35 +98,32 @@ class Query {
                 res.json({ error: e });
             }
         });
+        this.app.all('/rest/:service/:func', async (req, res) => {
+            console.log(req.query);
+            let service = {
+                f: req.params['func'],
+                t: 's',
+                n: req.params['service'],
+                pr: req.query,
+                p: 1,
+            };
+            this.renderServiceFromQuery(req, res, service);
+        });
+        // /users/:userId/books/:bookId
         this.app.all(this.httpPath, async (req, res) => {
             let query = req.query.query;
-            let request = new index_1.Request();
-            request.controllers = this.controllers;
-            request.models = this.models;
-            request.method = req.method;
             if (this.corsRejected) {
                 res.json({
-                    msg: null,
+                    msg: "CORS Rejected",
                     data: null,
-                    status_code: 500,
+                    status: 500,
                     total_pages: 0,
                 });
                 return;
             }
             else if (query) {
-                query = JSON.parse(query);
-                request.service = query;
-                request.expressReq = req;
-                request.expressRes = res;
-                if (query) {
-                    let response = await request.generateResponseFromGraph(false);
-                    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
-                    if (response.statusCode) {
-                        res.status(parseInt(response.statusCode));
-                    }
-                    res.json(Query.responseToObject(response));
-                    return;
-                }
+                let service = JSON.parse(query);
+                this.renderServiceFromQuery(req, res, service);
             }
             res.send("Hello World!");
         });
@@ -137,6 +134,25 @@ class Query {
         // this.server.
         this.startWebSocket(this.server, this.websocketPath);
         return this;
+    }
+    async renderServiceFromQuery(req, res, service) {
+        let request = new index_1.Request();
+        request.controllers = this.controllers;
+        request.models = this.models;
+        request.method = req.method;
+        request.service = service;
+        request.expressReq = req;
+        request.expressRes = res;
+        if (service) {
+            let response = await request.generateResponseFromGraph(false);
+            res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
+            if (response.statusCode) {
+                res.status(parseInt(response.statusCode));
+            }
+            res.json(Query.responseToObject(response));
+            return;
+        }
+        throw new Error("Method not implemented.");
     }
     static responseToObject(response) {
         var _a, _b;
