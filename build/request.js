@@ -249,7 +249,12 @@ class Request {
     }
     getObjectData(key) {
         var _a;
-        return key ? JSON.parse((_a = this.data) === null || _a === void 0 ? void 0 : _a[key]) : null;
+        let data;
+        try {
+            data = JSON.parse((_a = this.data) === null || _a === void 0 ? void 0 : _a[key]);
+        }
+        catch (e) { }
+        return key && data ? data : null;
     }
     setData(data) {
         this.data = data;

@@ -357,7 +357,11 @@ export default class Request {
     return key ? this.data?.[key] ?? null : null;
   }
   getObjectData<R>(key: string): R | undefined {
-    return key ? JSON.parse(this.data?.[key]) as R : null;
+    let data: R | undefined;
+    try{
+      data = JSON.parse(this.data?.[key]) as R
+    } catch(e){}
+    return key && data ? data : null;
   }
   setData(data: Datum<any>): this {
     this.data = data;

@@ -99,7 +99,6 @@ class Query {
             }
         });
         this.app.all('/rest/:service/:func', async (req, res) => {
-            console.log(req.query);
             let service = {
                 f: req.params['func'],
                 t: 's',
