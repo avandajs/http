@@ -119,6 +119,8 @@ export default class Query {
           n: req.params["service"],
           pr: req.query as {},
           p: 1,
+          al: true,
+          c: ['*'],
         };
         this.renderServiceFromQuery(req, res, service);
         return;
@@ -171,12 +173,13 @@ export default class Query {
     request.controllers = this.controllers;
     request.models = this.models;
     request.method = req.method;
-
+    
     request.service = service;
     request.expressReq = req;
     request.expressRes = res;
     if (service) {
       let response = await request.generateResponseFromGraph(false);
+      request.data = response
       res.setHeader(
         "Access-Control-Allow-Headers",
         "Content-Type, X-Auth-Token, Origin, Authorization"

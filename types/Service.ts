@@ -4,7 +4,8 @@ import Datum from "./Datum";
 export default  interface Service {
     n: string,//name
     t: 's' | 'c',//type: s- service,c- column
-    c?: Array<Service | string>//columns - array of services or columns
+    //columns - array of services or columns
+    c?: Array<Service | string>
     f: string,//function
     a?: string//as/alias
     al?: boolean//auto-link

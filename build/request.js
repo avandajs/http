@@ -248,13 +248,14 @@ class Request {
         return key ? (_b = (_a = this.data) === null || _a === void 0 ? void 0 : _a[key]) !== null && _b !== void 0 ? _b : null : null;
     }
     getObjectData(key) {
-        var _a;
-        let data;
         try {
-            data = JSON.parse((_a = this.data) === null || _a === void 0 ? void 0 : _a[key]);
+            if (!this.data || !this.data[key])
+                return null;
+            return JSON.parse(this.data[key]);
         }
-        catch (e) { }
-        return key && data ? data : null;
+        catch (e) {
+            return null;
+        }
     }
     setData(data) {
         this.data = data;
@@ -341,6 +342,7 @@ class Request {
         });
     }
     async makeRequest(url, request) {
+        var _a, _b, _c, _d;
         try {
             let queryString = this.query
                 ? new URLSearchParams(this.query).toString()
@@ -350,6 +352,7 @@ class Request {
             let axiosRes = await request(url);
             let status = axiosRes.status;
             let headers = axiosRes.headers;
+            console.log({ axiosRes });
             let response = new response_1.default();
             response.headers = headers;
             response.statusCode = status;
@@ -357,11 +360,12 @@ class Request {
             return response;
         }
         catch (e) {
+            console.error(e);
             let response = new response_1.default();
-            response.headers = e.response.headers;
-            response.statusCode = e.response.status;
-            response.data = e.response.data;
-            response.message = e.response.statusText;
+            response.headers = (_a = e.response) === null || _a === void 0 ? void 0 : _a.headers;
+            response.statusCode = (_b = e.response) === null || _b === void 0 ? void 0 : _b.status;
+            response.data = (_c = e.response) === null || _c === void 0 ? void 0 : _c.data;
+            response.message = (_d = e.response) === null || _d === void 0 ? void 0 : _d.statusText;
             return response;
         }
     }

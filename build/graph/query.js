@@ -105,6 +105,8 @@ class Query {
                 n: req.params["service"],
                 pr: req.query,
                 p: 1,
+                al: true,
+                c: ['*'],
             };
             this.renderServiceFromQuery(req, res, service);
             return;
@@ -146,6 +148,7 @@ class Query {
         request.expressRes = res;
         if (service) {
             let response = await request.generateResponseFromGraph(false);
+            request.data = response;
             res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
             if (response.statusCode) {
                 res.status(parseInt(response.statusCode));

@@ -357,11 +357,12 @@ export default class Request {
     return key ? this.data?.[key] ?? null : null;
   }
   getObjectData<R>(key: string): R | undefined {
-    let data: R | undefined;
     try{
-      data = JSON.parse(this.data?.[key]) as R
-    } catch(e){}
-    return key && data ? data : null;
+      if(!this.data || !this.data[key]) return null;
+      return JSON.parse(this.data[key]) as R
+    } catch(e){
+      return null;
+    }
   }
   setData(data: Datum<any>): this {
     this.data = data;
@@ -476,18 +477,21 @@ export default class Request {
       let status = axiosRes.status;
       let headers = axiosRes.headers;
 
+      console.log({axiosRes})
+
       let response = new Response();
       response.headers = headers;
       response.statusCode = status;
       response.data = axiosRes.data;
       return response;
     } catch (e) {
+      console.error(e)
       let response = new Response();
 
-      response.headers = e.response.headers;
-      response.statusCode = e.response.status;
-      response.data = e.response.data;
-      response.message = e.response.statusText;
+      response.headers = e.response?.headers;
+      response.statusCode = e.response?.status;
+      response.data = e.response?.data;
+      response.message = e.response?.statusText;
 
       return response;
     }
