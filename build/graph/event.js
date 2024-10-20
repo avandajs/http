@@ -22,10 +22,10 @@ class EventStorageDriver {
 }
 exports.EventStorageDriver = EventStorageDriver;
 class Event {
-    constructor() { }
     static setRemoteEventServiceUrl(url) {
         Event.remoteEventServiceUrl = url;
     }
+    constructor() { }
     static setDriver(driver) { }
     static async emitEvent(event, payload) {
         Event.EventEmitter.emit(event, ...payload);
@@ -59,8 +59,8 @@ class Event {
         Event.EventEmitter.removeAllListeners(event);
     }
 }
-exports.default = Event;
 Event.EventEmitter = new events_1.default();
+exports.default = Event;
 class Broadcastable {
     defaultPayload() {
         return null;
