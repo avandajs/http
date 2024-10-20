@@ -120,7 +120,7 @@ export default class Query {
           pr: req.query as {},
           p: 1,
           al: true,
-          c: ['*'],
+          c: ["*"],
         };
         this.renderServiceFromQuery(req, res, service);
         return;
@@ -147,7 +147,74 @@ export default class Query {
           this.renderServiceFromQuery(req, res, service);
           return;
         }
-        res.send("Hello World!");
+        res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Avanda Framework</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .highlight {
+            color: #3498db;
+        }
+        p {
+            margin-bottom: 20px;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #3498db;
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+        }
+        .cta-button:hover {
+            background-color: #2980b9;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to Your <span class="highlight">Avanda</span> Framework</h1>
+        <p>
+            Congratulations! You've successfully set up your Avanda Project. This is your default home page, ready for you to customize and build upon.
+        </p>
+        <p>
+            Start building your amazing application by editing this page or creating new routes in your framework.
+        </p>
+        <!---<a href="/docs" class="cta-button">View Documentation</a>-->
+    </div>
+    <div class="footer">
+        <p>&copy; 2024 Avanda Framework. All rights reserved.</p>
+    </div>
+</body>
+</html>`);
       }
     );
 
@@ -173,13 +240,13 @@ export default class Query {
     request.controllers = this.controllers;
     request.models = this.models;
     request.method = req.method;
-    
+
     request.service = service;
     request.expressReq = req;
     request.expressRes = res;
     if (service) {
       let response = await request.generateResponseFromGraph(false);
-      request.data = response
+      request.data = response;
       res.setHeader(
         "Access-Control-Allow-Headers",
         "Content-Type, X-Auth-Token, Origin, Authorization"
