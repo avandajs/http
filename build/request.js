@@ -138,7 +138,8 @@ class Request {
                     //    parent has 1 to 1 relationship
                     if (parentData[self_key]) {
                         model.where({ id: parentData[self_key] });
-                        cache_key = serviceName + "/" + fnc + "_" + "id" + "_" + parentData[self_key];
+                        cache_key =
+                            serviceName + "/" + fnc + "_" + "id" + "_" + parentData[self_key];
                     }
                 }
                 else if (parentData && typeof parentData == "object") {
@@ -311,7 +312,7 @@ class Request {
     async get(url) {
         return await this.makeRequest(url, async (url) => await axios_1.default.get(url, {
             headers: this.headers,
-            timeout: this.timeout
+            timeout: this.timeout,
         }));
     }
     async post(url, data) {
@@ -319,7 +320,7 @@ class Request {
             var _a;
             return await axios_1.default.post(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
-                timeout: this.timeout
+                timeout: this.timeout,
             });
         });
     }
@@ -328,7 +329,7 @@ class Request {
             var _a;
             return await axios_1.default.patch(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
-                timeout: this.timeout
+                timeout: this.timeout,
             });
         });
     }
@@ -337,7 +338,7 @@ class Request {
             var _a;
             return await axios_1.default.put(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
-                timeout: this.timeout
+                timeout: this.timeout,
             });
         });
     }
@@ -352,7 +353,6 @@ class Request {
             let axiosRes = await request(url);
             let status = axiosRes.status;
             let headers = axiosRes.headers;
-            console.log({ axiosRes });
             let response = new response_1.default();
             response.headers = headers;
             response.statusCode = status;

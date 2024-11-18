@@ -134,7 +134,7 @@ export default class Query {
       async (req: AvandaHttpRequest, res: express.Response) => {
         let query = req.query.query as string;
 
-        if (this.corsRejected) {
+        if (this.corsRejected && !this.serverConfig.disableCORS) {
           res.json({
             msg: "CORS Rejected",
             data: null,
@@ -147,6 +147,7 @@ export default class Query {
           this.renderServiceFromQuery(req, res, service);
           return;
         }
+
         res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>

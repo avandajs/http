@@ -118,7 +118,7 @@ class Query {
         // /users/:userId/books/:bookId
         this.app.all(this.httpPath, async (req, res) => {
             let query = req.query.query;
-            if (this.corsRejected) {
+            if (this.corsRejected && !this.serverConfig.disableCORS) {
                 res.json({
                     msg: "CORS Rejected",
                     data: null,

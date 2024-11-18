@@ -47,7 +47,7 @@ export default class Request {
     return new this.controllers[name](await this.connection);
   }
 
-  setTimeOut(milliseconds: number){
+  setTimeOut(milliseconds: number) {
     this.timeout = milliseconds;
   }
 
@@ -205,7 +205,8 @@ export default class Request {
           //    parent has 1 to 1 relationship
           if (parentData[self_key]) {
             model.where({ id: parentData[self_key] });
-            cache_key = serviceName + "/" + fnc + "_" + "id" + "_" + parentData[self_key];
+            cache_key =
+              serviceName + "/" + fnc + "_" + "id" + "_" + parentData[self_key];
           }
         } else if (parentData && typeof parentData == "object") {
           // Parent has 1 to many relationship
@@ -357,10 +358,10 @@ export default class Request {
     return key ? this.data?.[key] ?? null : null;
   }
   getObjectData<R>(key: string): R | undefined {
-    try{
-      if(!this.data || !this.data[key]) return null;
-      return JSON.parse(this.data[key]) as R
-    } catch(e){
+    try {
+      if (!this.data || !this.data[key]) return null;
+      return JSON.parse(this.data[key]) as R;
+    } catch (e) {
       return null;
     }
   }
@@ -426,7 +427,7 @@ export default class Request {
       async (url) =>
         await axios.get(url, {
           headers: this.headers,
-          timeout: this.timeout
+          timeout: this.timeout,
         })
     );
   }
@@ -437,7 +438,7 @@ export default class Request {
       async (url) =>
         await axios.post(url, data ?? this.data ?? {}, {
           headers: this.headers,
-          timeout: this.timeout
+          timeout: this.timeout,
         })
     );
   }
@@ -447,7 +448,7 @@ export default class Request {
       async (url) =>
         await axios.patch(url, data ?? this.data ?? {}, {
           headers: this.headers,
-          timeout: this.timeout
+          timeout: this.timeout,
         })
     );
   }
@@ -457,7 +458,7 @@ export default class Request {
       async (url) =>
         await axios.put(url, data ?? this.data ?? {}, {
           headers: this.headers,
-          timeout: this.timeout
+          timeout: this.timeout,
         })
     );
   }
@@ -476,16 +477,13 @@ export default class Request {
       let axiosRes = await request(url);
       let status = axiosRes.status;
       let headers = axiosRes.headers;
-
-      console.log({axiosRes})
-
       let response = new Response();
       response.headers = headers;
       response.statusCode = status;
       response.data = axiosRes.data;
       return response;
     } catch (e) {
-      console.error(e)
+      console.error(e);
       let response = new Response();
 
       response.headers = e.response?.headers;
