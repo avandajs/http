@@ -255,7 +255,12 @@ export default class Query {
       if (response.statusCode) {
         res.status(parseInt(response.statusCode as unknown as string));
       }
-      res.json(Query.responseToObject(response));
+      let obj = Query.responseToObject(response);
+      if (typeof obj == "string") {
+        res.send(obj);
+        return;
+      }
+      res.json(obj);
       return;
     }
     throw new Error("Method not implemented.");
@@ -271,6 +276,8 @@ export default class Query {
         per_page: response.perPage,
         total_pages: response?.totalPages ?? 1,
       };
+    } else if (typeof response == "string") {
+      return response;
     } else {
       return {
         msg: "Auto-generated message",
