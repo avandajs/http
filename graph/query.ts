@@ -255,7 +255,13 @@ export default class Query {
       if (response.statusCode) {
         res.status(parseInt(response.statusCode as unknown as string));
       }
+
+      if (response.redirectTo) {
+        res.redirect(response.redirectTo);
+        return;
+      }
       let obj = Query.responseToObject(response);
+
       if (typeof obj == "string") {
         res.send(obj);
         return;
