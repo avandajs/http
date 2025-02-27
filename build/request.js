@@ -29,6 +29,9 @@ class Request {
     setRequestMethod(method) {
         this.method = method;
     }
+    setConnection(connection) {
+        this.connection = connection;
+    }
     async getControllerResponse(controller, func) {
         let instance = new controller(this.connection);
         const funcName = String(func);

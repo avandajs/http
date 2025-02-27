@@ -63,6 +63,10 @@ export default class Request {
     this.method = method;
   }
 
+  setConnection(connection: Promise<Sequelize> | Sequelize) {
+    this.connection = connection;
+  }
+
   async getControllerResponse<T extends new (connection: any) => Controller>(
     controller: T,
     func: keyof InstanceType<T>
