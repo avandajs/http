@@ -26,6 +26,19 @@ class Request {
     setTimeOut(milliseconds) {
         this.timeout = milliseconds;
     }
+    setRequestMethod(method) {
+        this.method = method;
+    }
+    async getControllerResponse(controller, func) {
+        let instance = new controller(this.connection);
+        const funcName = String(func);
+        if (typeof instance[funcName] === "function") {
+            return await instance[funcName](this, new response_1.default(), instance.model);
+        }
+        else {
+            console.error(`Function ${funcName} does not exist on the controller.`);
+        }
+    }
     async extractNeededDataFromArray(data, columns, rootService, toExclude, _for) {
         var _a, _b, _c;
         let ret = [];

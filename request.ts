@@ -13,6 +13,14 @@ import { Sequelize } from "sequelize";
 import Query from "./graph/query";
 import { isPlainObject, omit, snakeCase } from "lodash";
 import cache from "global-cache";
+
+type MethodsOnly<T> = Pick<
+  T,
+  Extract<
+    keyof T,
+    { [K in keyof T]: T[K] extends Function ? K : never }[keyof T]
+  >
+>;
 export default class Request {
   method: string;
   id: string | number;
@@ -49,6 +57,24 @@ export default class Request {
 
   setTimeOut(milliseconds: number) {
     this.timeout = milliseconds;
+  }
+
+  setRequestMethod(method: string) {
+    this.method = method;
+  }
+
+  async getControllerResponse<T extends new (connection: any) => Controller>(
+    controller: T,
+    func: keyof InstanceType<T>
+  ) {
+    let instance = new controller(this.connection);
+
+    const funcName = String(func);
+    if (typeof instance[funcName] === "function") {
+      return await instance[funcName](this, new Response(), instance.model);
+    } else {
+      console.error(`Function ${funcName} does not exist on the controller.`);
+    }
   }
 
   private async extractNeededDataFromArray(

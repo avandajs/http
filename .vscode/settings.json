@@ -1,5 +1,10 @@
 {
     "cSpell.words": [
         "avanda"
-    ]
+    ],
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#223127",
+        "titleBar.activeBackground": "#304437",
+        "titleBar.activeForeground": "#F8FAF8"
+    }
 }
