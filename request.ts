@@ -71,11 +71,11 @@ export default class Request {
     controller: T,
     func: keyof InstanceType<T>
   ) {
-    let instance = new controller(this.connection);
+    let instance = new controller(Model.connection);
 
     const funcName = String(func);
     if (typeof instance[funcName] === "function") {
-      return await instance[funcName](this, new Response(), instance.model);
+      return (await instance[funcName](this, new Response(), instance.model))();
     } else {
       console.error(`Function ${funcName} does not exist on the controller.`);
     }

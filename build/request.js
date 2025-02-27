@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = require("@avanda/app");
 const response_1 = __importDefault(require("./response"));
 const axios_1 = __importDefault(require("axios"));
+const orm_1 = require("@avanda/orm");
 const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
 class Request {
@@ -33,10 +34,10 @@ class Request {
         this.connection = connection;
     }
     async getControllerResponse(controller, func) {
-        let instance = new controller(this.connection);
+        let instance = new controller(orm_1.Model.connection);
         const funcName = String(func);
         if (typeof instance[funcName] === "function") {
-            return await instance[funcName](this, new response_1.default(), instance.model);
+            return (await instance[funcName](this, new response_1.default(), instance.model))();
         }
         else {
             console.error(`Function ${funcName} does not exist on the controller.`);
