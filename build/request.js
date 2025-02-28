@@ -285,8 +285,15 @@ class Request {
         this.data = data;
         return this;
     }
+    setAuthToken(token) {
+        this.authToken = token;
+        return this;
+    }
     setHeaders(headers) {
         this.headers = headers;
+        if (this.authToken) {
+            this.headers["authorization"] = `Bearer ${this.authToken}`;
+        }
         return this;
     }
     setQuery(query) {

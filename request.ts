@@ -39,6 +39,7 @@ export default class Request {
   columns?: Datum<any>;
   caches: Datum<any> = {};
   headers?: Datum<any> = {};
+  authToken?: string;
   model?: Model;
   service?: Service;
   controllers: { [model: string]: typeof Controller } = {};
@@ -405,8 +406,15 @@ export default class Request {
     this.data = data;
     return this;
   }
+  setAuthToken(token: string): this {
+    this.authToken = token;
+    return this;
+  }
   setHeaders(headers: Datum<any>): this {
     this.headers = headers;
+    if (this.authToken) {
+      this.headers["authorization"] = `Bearer ${this.authToken}`;
+    }
     return this;
   }
   setQuery(query: Datum<any>): this {
