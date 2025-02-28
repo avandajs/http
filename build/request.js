@@ -48,7 +48,7 @@ class Request {
         if (!model)
             throw new Error(`Model ${controller_name} not found in models`);
         let instance = new controller(orm_1.Model.connection);
-        instance.model = model;
+        instance.model = new model();
         let response = new response_1.default();
         const funcName = String(func);
         if (typeof instance[funcName] === "function") {

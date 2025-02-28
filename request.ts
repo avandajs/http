@@ -89,7 +89,7 @@ export default class Request {
     let model = this.models[controller_name];
     if (!model) throw new Error(`Model ${controller_name} not found in models`);
     let instance = new controller(Model.connection);
-    instance.model = model;
+    instance.model = new model();
     let response = new Response();
 
     const funcName = String(func);
