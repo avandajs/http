@@ -43,7 +43,9 @@ class Request {
         const funcName = String(func);
         if (typeof instance[funcName] === "function") {
             let res = await instance[funcName](response, this, model);
-            return res(response, this, model);
+            if (typeof res === "function")
+                return res(response, this, model);
+            return res;
         }
         else {
             console.error(`Function ${funcName} does not exist on the controller.`);
