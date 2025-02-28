@@ -11,6 +11,7 @@ const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
 class Request {
     constructor() {
+        this.method = "GET";
         this.isWatcher = false;
         this.attrs = {};
         this.eventPayload = {};
@@ -29,18 +30,20 @@ class Request {
     }
     setRequestMethod(method) {
         this.method = method;
+        return this;
     }
     setConnection(connection) {
         this.connection = connection;
+        return this;
     }
     async getControllerResponse(controller, func) {
         let instance = new controller(orm_1.Model.connection);
-        console.log({ instance, func });
+        let response = new response_1.default();
+        let model = instance.model;
         const funcName = String(func);
         if (typeof instance[funcName] === "function") {
-            let res = await instance[funcName](this, new response_1.default(), instance.model);
-            console.log({ res });
-            return res();
+            let res = await instance[funcName](response, this, model);
+            return res(response, this, model);
         }
         else {
             console.error(`Function ${funcName} does not exist on the controller.`);
@@ -132,7 +135,7 @@ class Request {
         var _a, _b;
         let fnc = service.f ? service.f : "get";
         let model = null;
-        this.method = (_a = this.expressReq.method) !== null && _a !== void 0 ? _a : "GET";
+        this.method = ((_a = this.expressReq.method) !== null && _a !== void 0 ? _a : "GET");
         this.data = this.expressReq.body;
         this.files = this.expressReq.files;
         this.args = parentData;

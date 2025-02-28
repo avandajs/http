@@ -21,8 +21,10 @@ type MethodsOnly<T> = Pick<
     { [K in keyof T]: T[K] extends Function ? K : never }[keyof T]
   >
 >;
+
+export type RequestMethods = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export default class Request {
-  method: string;
+  method: RequestMethods = "GET";
   id: string | number;
   page: number;
   isWatcher: boolean = false;
@@ -59,12 +61,14 @@ export default class Request {
     this.timeout = milliseconds;
   }
 
-  setRequestMethod(method: string) {
+  setRequestMethod(method: RequestMethods) {
     this.method = method;
+    return this;
   }
 
   setConnection(connection: Promise<Sequelize> | Sequelize) {
     this.connection = connection;
+    return this;
   }
 
   async getControllerResponse<T extends new (connection: any) => Controller>(
@@ -72,14 +76,12 @@ export default class Request {
     func: keyof InstanceType<T>
   ) {
     let instance = new controller(Model.connection);
-
-    console.log({ instance, func });
-
+    let response = new Response();
+    let model = instance.model;
     const funcName = String(func);
     if (typeof instance[funcName] === "function") {
-      let res = await instance[funcName](this, new Response(), instance.model);
-      console.log({ res });
-      return res();
+      let res = await instance[funcName](response, this, model);
+      return res(response, this, model);
     } else {
       console.error(`Function ${funcName} does not exist on the controller.`);
     }
@@ -209,7 +211,7 @@ export default class Request {
 
     let fnc = service.f ? service.f : "get";
     let model: Model | null = null;
-    this.method = this.expressReq.method ?? "GET";
+    this.method = (this.expressReq.method ?? "GET") as RequestMethods;
     this.data = this.expressReq.body;
     this.files = this.expressReq.files;
     this.args = parentData;

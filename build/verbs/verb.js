@@ -12,14 +12,16 @@ function default_1(middlewares, method) {
             let request = args[1];
             let response = args[0];
             let model = args[2];
-            if (((_a = request === null || request === void 0 ? void 0 : request.method) === null || _a === void 0 ? void 0 : _a.toLowerCase()) !== method && !request.isWatcher) { //invalid request
+            if (((_a = request === null || request === void 0 ? void 0 : request.method) === null || _a === void 0 ? void 0 : _a.toLowerCase()) !== method && !request.isWatcher) {
+                //invalid request
                 return function (...args) {
                     return response.error(`Bad request type, ${request === null || request === void 0 ? void 0 : request.method}`, 500);
                 };
             }
-            else if (((_b = request === null || request === void 0 ? void 0 : request.method) === null || _b === void 0 ? void 0 : _b.toLowerCase()) == 'options' && !request.isWatcher) {
+            else if (((_b = request === null || request === void 0 ? void 0 : request.method) === null || _b === void 0 ? void 0 : _b.toLowerCase()) == "options" &&
+                !request.isWatcher) {
                 return function (...args) {
-                    return response.success('Preflight', 200);
+                    return response.success("Preflight", 200);
                 };
             }
             //check for middlewares validity
@@ -31,7 +33,7 @@ function default_1(middlewares, method) {
             }
             // console.log({args})
             //ignore next line
-            Object.defineProperty(this, 'request_method', { value: 'get' });
+            Object.defineProperty(this, "request_method", { value: "get" });
             return originalMethod.apply(this, args);
         };
         return descriptor;

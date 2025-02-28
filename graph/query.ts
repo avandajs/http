@@ -23,6 +23,7 @@ const version = "0.3.102";
 import { Out } from "@avanda/cli";
 import Client from "./clients";
 import Event, { EventStorageDriver } from "./event";
+import { RequestMethods } from "../request";
 // let CLIENTS: WebSocketClient[] = [];
 
 /*
@@ -240,7 +241,7 @@ export default class Query {
 
     request.controllers = this.controllers;
     request.models = this.models;
-    request.method = req.method;
+    request.method = req.method as RequestMethods;
 
     request.service = service;
     request.expressReq = req;
