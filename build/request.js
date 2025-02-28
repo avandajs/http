@@ -287,6 +287,7 @@ class Request {
     }
     setAuthToken(token) {
         this.authToken = token;
+        this.headers["authorization"] = `Bearer ${token}`;
         return this;
     }
     setHeaders(headers) {

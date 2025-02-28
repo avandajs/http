@@ -408,6 +408,7 @@ export default class Request {
   }
   setAuthToken(token: string): this {
     this.authToken = token;
+    this.headers["authorization"] = `Bearer ${token}`;
     return this;
   }
   setHeaders(headers: Datum<any>): this {
