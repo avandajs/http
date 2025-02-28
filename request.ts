@@ -62,6 +62,11 @@ export default class Request {
     this.timeout = milliseconds;
   }
 
+  setModels(models: { [model: string]: any }) {
+    this.models = models;
+    return this;
+  }
+
   setRequestMethod(method: RequestMethods) {
     this.method = method;
     return this;
@@ -72,13 +77,21 @@ export default class Request {
     return this;
   }
 
-  async getControllerResponse<T extends new (connection: any) => Controller>(
-    controller: T,
-    func: keyof InstanceType<T>
-  ) {
+  async getControllerResponse<
+    T extends new (connection: any, model?: Model) => Controller
+  >(controller: T, func: keyof InstanceType<T>) {
+    let controller_name = controller.name;
+
+    if (!this.models)
+      throw new Error(
+        "call setModels() before calling getControllerResponse()"
+      );
+    let model = this.models[controller_name];
+    if (!model) throw new Error(`Model ${controller_name} not found in models`);
     let instance = new controller(Model.connection);
+    instance.model = model;
     let response = new Response();
-    let model = instance.model;
+
     const funcName = String(func);
     if (typeof instance[funcName] === "function") {
       let res = await instance[funcName](response, this, model);

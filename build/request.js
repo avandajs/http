@@ -28,6 +28,10 @@ class Request {
     setTimeOut(milliseconds) {
         this.timeout = milliseconds;
     }
+    setModels(models) {
+        this.models = models;
+        return this;
+    }
     setRequestMethod(method) {
         this.method = method;
         return this;
@@ -37,9 +41,15 @@ class Request {
         return this;
     }
     async getControllerResponse(controller, func) {
+        let controller_name = controller.name;
+        if (!this.models)
+            throw new Error("call setModels() before calling getControllerResponse()");
+        let model = this.models[controller_name];
+        if (!model)
+            throw new Error(`Model ${controller_name} not found in models`);
         let instance = new controller(orm_1.Model.connection);
+        instance.model = model;
         let response = new response_1.default();
-        let model = instance.model;
         const funcName = String(func);
         if (typeof instance[funcName] === "function") {
             let res = await instance[funcName](response, this, model);
