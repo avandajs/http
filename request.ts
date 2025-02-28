@@ -423,6 +423,10 @@ export default class Request {
     this.query = query;
     return this;
   }
+  setParams(params: Datum<any>): this {
+    this.params = params;
+    return this;
+  }
   setAttr<T = any>(attr: string, value: T): this {
     this.attrs[attr] = value;
     return this;

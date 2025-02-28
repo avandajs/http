@@ -303,6 +303,10 @@ class Request {
         this.query = query;
         return this;
     }
+    setParams(params) {
+        this.params = params;
+        return this;
+    }
     setAttr(attr, value) {
         this.attrs[attr] = value;
         return this;
