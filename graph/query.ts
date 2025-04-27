@@ -11,7 +11,7 @@ import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
 import { isPlainObject, omit, snakeCase } from "lodash";
-import { serverConfig } from "@avanda/app";
+import { Env, serverConfig } from "@avanda/app";
 import WebSocket from "ws";
 import queryString from "query-string";
 import WebSocketClient from "../types/WebSocketClient";
@@ -123,6 +123,8 @@ export default class Query {
           al: true,
           c: ["*"],
         };
+
+        console.log("service", service);
         this.renderServiceFromQuery(req, res, service);
         return;
       }
@@ -237,6 +239,17 @@ export default class Query {
     res: express.Response,
     service?: Service
   ) {
+    if (Env.get("NODE_ENV") == "development") {
+      console.info("[Request]: " + req.method + "/ " + req.url);
+      console.info(
+        "[Service]: " +
+          req.method +
+          "/ Service:" +
+          service.n +
+          " Func:" +
+          service.f
+      );
+    }
     let request = new Request();
 
     request.controllers = this.controllers;
@@ -248,6 +261,7 @@ export default class Query {
     request.expressRes = res;
     if (service) {
       let response = await request.generateResponseFromGraph(false);
+      console.log("response", response);
       request.data = response;
       res.setHeader(
         "Access-Control-Allow-Headers",
@@ -283,17 +297,8 @@ export default class Query {
         per_page: response.perPage,
         total_pages: response?.totalPages ?? 1,
       };
-    } else if (typeof response == "string") {
-      return response;
     } else {
-      return {
-        msg: "Auto-generated message",
-        data: response,
-        status_code: 200,
-        current_page: response.currentPage,
-        per_page: response.perPage,
-        total_pages: response?.totalPages ?? 1,
-      };
+      return response;
     }
   }
 

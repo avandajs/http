@@ -339,6 +339,19 @@ export default class Request {
       wsCLient
     );
 
+    if (typeof controllerResponse == "string") {
+      //if string, return as is
+      return controllerResponse;
+    }
+
+    if (
+      !(controllerResponse instanceof Response) &&
+      typeof controllerResponse == "object"
+    ) {
+      //if response, return as is
+      return controllerResponse;
+    }
+
     if (
       typeof controllerResponse == "function" &&
       !(controllerResponse instanceof Response)
@@ -354,6 +367,11 @@ export default class Request {
         "",
         controllerResponse
       );
+
+      // console.log(
+      //   "Response is not instance of Response, converting to response",
+      //   controllerResponse
+      // );
     }
 
     if (isRoot && controllerResponse.status_code > 299) {

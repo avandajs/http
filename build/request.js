@@ -230,6 +230,15 @@ class Request {
         let controller = _controller !== null && _controller !== void 0 ? _controller : (await this.getController(service));
         let toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;
         let controllerResponse = await this.getServiceFncResponse(controller, name, service, parentData, parentService, _for === "watcher", wsCLient);
+        if (typeof controllerResponse == "string") {
+            //if string, return as is
+            return controllerResponse;
+        }
+        if (!(controllerResponse instanceof response_1.default) &&
+            typeof controllerResponse == "object") {
+            //if response, return as is
+            return controllerResponse;
+        }
         if (typeof controllerResponse == "function" &&
             !(controllerResponse instanceof response_1.default))
             //will be function if returned from middleware decorator
@@ -238,6 +247,10 @@ class Request {
         if (!(controllerResponse instanceof response_1.default) && isRoot) {
             //convert raw returned data to response for the root
             controllerResponse = await new response_1.default().success("", controllerResponse);
+            // console.log(
+            //   "Response is not instance of Response, converting to response",
+            //   controllerResponse
+            // );
         }
         if (isRoot && controllerResponse.status_code > 299) {
             //if is root, and response doesn't look success, return the root response only

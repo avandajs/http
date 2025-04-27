@@ -32,6 +32,7 @@ const express_fileupload_1 = __importDefault(require("express-fileupload"));
 const cors_1 = __importDefault(require("cors"));
 const http = __importStar(require("http"));
 const index_1 = require("../index");
+const app_1 = require("@avanda/app");
 const ws_1 = __importDefault(require("ws"));
 const query_string_1 = __importDefault(require("query-string"));
 const uuid_1 = require("uuid");
@@ -112,6 +113,7 @@ class Query {
                 al: true,
                 c: ["*"],
             };
+            console.log("service", service);
             this.renderServiceFromQuery(req, res, service);
             return;
         });
@@ -210,6 +212,15 @@ class Query {
         return this;
     }
     async renderServiceFromQuery(req, res, service) {
+        if (app_1.Env.get("NODE_ENV") == "development") {
+            console.info("[Request]: " + req.method + "/ " + req.url);
+            console.info("[Service]: " +
+                req.method +
+                "/ Service:" +
+                service.n +
+                " Func:" +
+                service.f);
+        }
         let request = new index_1.Request();
         request.controllers = this.controllers;
         request.models = this.models;
@@ -219,6 +230,7 @@ class Query {
         request.expressRes = res;
         if (service) {
             let response = await request.generateResponseFromGraph(false);
+            console.log("response", response);
             request.data = response;
             res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
             if (response.statusCode) {
@@ -239,7 +251,7 @@ class Query {
         throw new Error("Method not implemented.");
     }
     static responseToObject(response) {
-        var _a, _b;
+        var _a;
         if (response instanceof index_1.Response) {
             return {
                 msg: response.message,
@@ -250,18 +262,8 @@ class Query {
                 total_pages: (_a = response === null || response === void 0 ? void 0 : response.totalPages) !== null && _a !== void 0 ? _a : 1,
             };
         }
-        else if (typeof response == "string") {
-            return response;
-        }
         else {
-            return {
-                msg: "Auto-generated message",
-                data: response,
-                status_code: 200,
-                current_page: response.currentPage,
-                per_page: response.perPage,
-                total_pages: (_b = response === null || response === void 0 ? void 0 : response.totalPages) !== null && _b !== void 0 ? _b : 1,
-            };
+            return response;
         }
     }
     getServerInstance(req, res) {
