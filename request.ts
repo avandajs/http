@@ -2,7 +2,9 @@ import express from "express";
 import Datum from "./types/Datum";
 import { Validator } from "@avanda/app";
 import Response from "./response";
-import axios, { AxiosResponse } from "axios";
+import axios, { AxiosResponse, ResponseType } from "axios";
+import http from "http";
+import https from "https";
 import UploadedFile from "./types/UploadedFile";
 import { Model } from "@avanda/orm";
 import Service from "./types/Service";
@@ -13,7 +15,21 @@ import { Sequelize } from "sequelize";
 import Query from "./graph/query";
 import { isPlainObject, omit, snakeCase } from "lodash";
 import cache from "global-cache";
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
 
+const axiosInstance = axios.create({
+  httpAgent: new http.Agent({
+    keepAlive: true,
+    // @ts-ignore
+    autoSelectFamily: false
+  }),
+  httpsAgent: new https.Agent({
+    keepAlive: true,
+    // @ts-ignore
+    autoSelectFamily: false
+  })
+});
 type MethodsOnly<T> = Pick<
   T,
   Extract<
@@ -28,17 +44,20 @@ export default class Request {
   id: string | number;
   page: number;
   isWatcher: boolean = false;
+  dumpError: boolean = false;
   args?: Datum<any>;
   parent?: Datum<any>;
   attrs?: Datum<any> = {};
   eventPayload?: Datum<any> = {};
   params?: Datum<any>;
   data?: Datum<any>;
+  rawBody: Buffer;
   files?: { [index: string]: UploadedFile | UploadedFile[] };
   query?: Datum<any>;
   columns?: Datum<any>;
   caches: Datum<any> = {};
   headers?: Datum<any> = {};
+  responseType?: ResponseType;
   authToken?: string;
   model?: Model;
   service?: Service;
@@ -51,7 +70,7 @@ export default class Request {
   executeWatchable: boolean = true;
   onClosedCallback?: () => void;
 
-  constructor() {}
+  constructor() { }
 
   private async getController(query: Service): Promise<Controller> {
     let name = query.n;
@@ -60,6 +79,11 @@ export default class Request {
 
   setTimeOut(milliseconds: number) {
     this.timeout = milliseconds;
+  }
+
+  setErrorDump(dump: boolean) {
+    this.dumpError = dump;
+    return this;
   }
 
   setModels(models: { [model: string]: any }) {
@@ -228,6 +252,7 @@ export default class Request {
     let model: Model | null = null;
     this.method = (this.expressReq.method ?? "GET") as RequestMethods;
     this.data = this.expressReq.body;
+    this.rawBody = this.expressReq.rawBody;
     this.files = this.expressReq.files;
     this.args = parentData;
     this.parent = parentData;
@@ -450,6 +475,12 @@ export default class Request {
     }
     return this;
   }
+
+  setResponseType(type: ResponseType): this {
+    this.responseType = type;
+    return this;
+  }
+
   setQuery(query: Datum<any>): this {
     this.query = query;
     return this;
@@ -506,9 +537,10 @@ export default class Request {
     return await this.makeRequest(
       url,
       async (url) =>
-        await axios.get(url, {
+        await axiosInstance.get(url, {
           headers: this.headers,
           timeout: this.timeout,
+          responseType: this.responseType,
         })
     );
   }
@@ -517,17 +549,24 @@ export default class Request {
     return await this.makeRequest(
       url,
       async (url) =>
-        await axios.post(url, data ?? this.data ?? {}, {
+        await axiosInstance.post(url, data ?? this.data ?? {}, {
           headers: this.headers,
           timeout: this.timeout,
         })
+    );
+  }
+  async delete(url: string, data?: Datum<any>): Promise<Response> {
+    return await this.makeRequest(
+      url,
+      async (url) =>
+        await axiosInstance.delete(url, data ?? this.data ?? {})
     );
   }
   async patch(url: string, data?: Datum<any>): Promise<Response> {
     return await this.makeRequest(
       url,
       async (url) =>
-        await axios.patch(url, data ?? this.data ?? {}, {
+        await axiosInstance.patch(url, data ?? this.data ?? {}, {
           headers: this.headers,
           timeout: this.timeout,
         })
@@ -537,7 +576,7 @@ export default class Request {
     return await this.makeRequest(
       url,
       async (url) =>
-        await axios.put(url, data ?? this.data ?? {}, {
+        await axiosInstance.put(url, data ?? this.data ?? {}, {
           headers: this.headers,
           timeout: this.timeout,
         })
@@ -564,7 +603,9 @@ export default class Request {
       response.data = axiosRes.data;
       return response;
     } catch (e) {
-      console.error(e);
+      if (this.dumpError) {
+        console.error(e);
+      }
       let response = new Response();
 
       response.headers = e.response?.headers;

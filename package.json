@@ -1,14 +1,21 @@
 {
   "name": "@avanda/http",
-  "version": "0.4.27",
+  "version": "0.5.3",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "types": "./index.ts",
+      "default": "./build/index.js"
+    }
+  },
   "author": "Wharley01",
   "license": "MIT",
   "private": false,
   "scripts": {
-    "dev": "nodemon"
+    "dev": "tsc --watch"
   },
   "publishConfig": {
     "access": "public"
@@ -22,7 +29,7 @@
     "@types/underscore": "^1.11.4",
     "@types/uuid": "^8.3.4",
     "@types/ws": "^8.5.12",
-    "axios": "^0.24.0",
+    "axios": "^1.13.5",
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
     "dotenv": "^10.0.0",

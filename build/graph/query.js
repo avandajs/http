@@ -66,17 +66,36 @@ class Query {
         this.httpPath = serverConfig.rootPath;
         return this;
     }
+    isOriginAllowed(origin) {
+        return this.serverConfig.CORSWhitelist.some((entry) => {
+            if (!entry.includes("*"))
+                return entry === origin;
+            const [scheme, host] = entry.split("://");
+            const [originScheme, originHost] = origin.split("://");
+            if (!host || !originHost || scheme !== originScheme)
+                return false;
+            const suffix = host.slice(host.indexOf("*") + 1);
+            const label = originHost.slice(0, originHost.length - suffix.length);
+            return (originHost.endsWith(suffix) &&
+                label.length > 0 &&
+                !label.includes("."));
+        });
+    }
     execute(models, controllers, eventDriver) {
         this.models = models;
         this.controllers = controllers;
         event_1.default.setDriver(eventDriver);
+        this.app.use(bodyParser.json({
+            verify: (req, res, buf) => {
+                req.rawBody = buf; // Store raw body buffer for signature verification
+            },
+        }));
         this.app.use(bodyParser.json({ limit: "100mb" }));
         this.app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
         this.app.use((0, cors_1.default)({
             credentials: true,
             origin: (origin, callback) => {
-                if (!origin ||
-                    this.serverConfig.CORSWhitelist.indexOf(origin) !== -1) {
+                if (!origin || this.isOriginAllowed(origin)) {
                     this.corsRejected = false;
                     callback(null, true);
                 }
@@ -90,6 +109,11 @@ class Query {
             useTempFiles: true,
         }));
         this.app.use(express_1.default.static("public"));
+        this.app.use(bodyParser.json({
+            verify: (req, res, buf) => {
+                req.rawBody = buf; // Store raw body buffer for signature verification
+            },
+        }));
         this.app.post(Query.eventPath, async (req, res) => {
             let { payload, event } = req.body;
             if (!payload || !event)
@@ -113,7 +137,6 @@ class Query {
                 al: true,
                 c: ["*"],
             };
-            console.log("service", service);
             this.renderServiceFromQuery(req, res, service);
             return;
         });
@@ -228,9 +251,9 @@ class Query {
         request.service = service;
         request.expressReq = req;
         request.expressRes = res;
+        request.rawBody = req.rawBody;
         if (service) {
             let response = await request.generateResponseFromGraph(false);
-            console.log("response", response);
             request.data = response;
             res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
             if (response.statusCode) {
@@ -238,6 +261,10 @@ class Query {
             }
             if (response.redirectTo) {
                 res.redirect(response.redirectTo);
+                return;
+            }
+            if (response instanceof index_1.Response && response.fileBytes) {
+                res.status(200).type(response.mimeType).send(response.fileBytes);
                 return;
             }
             let obj = Query.responseToObject(response);
@@ -325,6 +352,7 @@ class Query {
             avandaRequest.expressRes = response;
             avandaRequest.controllers = this.controllers;
             avandaRequest.models = this.models;
+            avandaRequest.rawBody = request.rawBody;
             // avandaRequest.method
             // NOTE: connectParams are not used here but good to understand how to get
             // to them if you need to pass data with the connection to identify it (e.g., a userId).

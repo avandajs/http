@@ -17,6 +17,8 @@ export default class Response {
   message?: string;
   model?: Model;
   wsCLient?: AvandaWebSocket;
+  fileBytes?: Buffer;
+  mimeType?: string;
   constructor() {}
 
   status(code: number) {
@@ -39,6 +41,18 @@ export default class Response {
   redirect(url: string) {
     this.statusCode = 302;
     this.redirectTo = url;
+    return this;
+  }
+
+  /**
+   * Send raw bytes instead of a JSON envelope, for downloads.
+   * Only honoured on the root service of an HTTP request; on nested
+   * services and over websockets it is ignored and the data stays as it was.
+   */
+  file(bytes: Buffer, mimeType: string): Response {
+    this.statusCode = 200;
+    this.fileBytes = bytes;
+    this.mimeType = mimeType;
     return this;
   }
 

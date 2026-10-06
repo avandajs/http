@@ -60,6 +60,25 @@ export default class Query {
     return this;
   }
 
+  isOriginAllowed(origin: string): boolean {
+    return this.serverConfig.CORSWhitelist.some((entry) => {
+      if (!entry.includes("*")) return entry === origin;
+
+      const [scheme, host] = entry.split("://");
+      const [originScheme, originHost] = origin.split("://");
+      if (!host || !originHost || scheme !== originScheme) return false;
+
+      const suffix = host.slice(host.indexOf("*") + 1);
+      const label = originHost.slice(0, originHost.length - suffix.length);
+
+      return (
+        originHost.endsWith(suffix) &&
+        label.length > 0 &&
+        !label.includes(".")
+      );
+    });
+  }
+
   execute(
     models: { [k: string]: any },
     controllers: { [k: string]: any },
@@ -69,16 +88,21 @@ export default class Query {
     this.controllers = controllers;
     Event.setDriver(eventDriver);
 
+    this.app.use(
+      bodyParser.json({
+        verify: (req: any, res, buf) => {
+          req.rawBody = buf; // Store raw body buffer for signature verification
+        },
+      })
+    );
+
     this.app.use(bodyParser.json({ limit: "100mb" }));
     this.app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
     this.app.use(
       cors({
         credentials: true,
         origin: (origin, callback) => {
-          if (
-            !origin ||
-            this.serverConfig.CORSWhitelist.indexOf(origin) !== -1
-          ) {
+          if (!origin || this.isOriginAllowed(origin)) {
             this.corsRejected = false;
             callback(null, true);
           } else {
@@ -94,6 +118,14 @@ export default class Query {
       })
     );
     this.app.use(express.static("public"));
+
+    this.app.use(
+      bodyParser.json({
+        verify: (req: any, res, buf) => {
+          req.rawBody = buf; // Store raw body buffer for signature verification
+        },
+      })
+    );
 
     this.app.post(
       Query.eventPath,
@@ -123,8 +155,6 @@ export default class Query {
           al: true,
           c: ["*"],
         };
-
-        console.log("service", service);
         this.renderServiceFromQuery(req, res, service);
         return;
       }
@@ -243,11 +273,11 @@ export default class Query {
       console.info("[Request]: " + req.method + "/ " + req.url);
       console.info(
         "[Service]: " +
-          req.method +
-          "/ Service:" +
-          service.n +
-          " Func:" +
-          service.f
+        req.method +
+        "/ Service:" +
+        service.n +
+        " Func:" +
+        service.f
       );
     }
     let request = new Request();
@@ -259,9 +289,9 @@ export default class Query {
     request.service = service;
     request.expressReq = req;
     request.expressRes = res;
+    request.rawBody = req.rawBody;
     if (service) {
       let response = await request.generateResponseFromGraph(false);
-      console.log("response", response);
       request.data = response;
       res.setHeader(
         "Access-Control-Allow-Headers",
@@ -273,6 +303,11 @@ export default class Query {
 
       if (response.redirectTo) {
         res.redirect(response.redirectTo);
+        return;
+      }
+
+      if (response instanceof Response && response.fileBytes) {
+        res.status(200).type(response.mimeType).send(response.fileBytes);
         return;
       }
       let obj = Query.responseToObject(response);
@@ -398,6 +433,7 @@ export default class Query {
         avandaRequest.expressRes = response;
         avandaRequest.controllers = this.controllers;
         avandaRequest.models = this.models;
+        avandaRequest.rawBody = request.rawBody;
         // avandaRequest.method
         // NOTE: connectParams are not used here but good to understand how to get
         // to them if you need to pass data with the connection to identify it (e.g., a userId).

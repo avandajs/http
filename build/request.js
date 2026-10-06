@@ -6,13 +6,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = require("@avanda/app");
 const response_1 = __importDefault(require("./response"));
 const axios_1 = __importDefault(require("axios"));
+const http_1 = __importDefault(require("http"));
+const https_1 = __importDefault(require("https"));
 const orm_1 = require("@avanda/orm");
 const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
+const dns_1 = __importDefault(require("dns"));
+dns_1.default.setDefaultResultOrder("ipv4first");
+const axiosInstance = axios_1.default.create({
+    httpAgent: new http_1.default.Agent({
+        keepAlive: true,
+        // @ts-ignore
+        autoSelectFamily: false
+    }),
+    httpsAgent: new https_1.default.Agent({
+        keepAlive: true,
+        // @ts-ignore
+        autoSelectFamily: false
+    })
+});
 class Request {
     constructor() {
         this.method = "GET";
         this.isWatcher = false;
+        this.dumpError = false;
         this.attrs = {};
         this.eventPayload = {};
         this.caches = {};
@@ -27,6 +44,10 @@ class Request {
     }
     setTimeOut(milliseconds) {
         this.timeout = milliseconds;
+    }
+    setErrorDump(dump) {
+        this.dumpError = dump;
+        return this;
     }
     setModels(models) {
         this.models = models;
@@ -149,6 +170,7 @@ class Request {
         let model = null;
         this.method = ((_a = this.expressReq.method) !== null && _a !== void 0 ? _a : "GET");
         this.data = this.expressReq.body;
+        this.rawBody = this.expressReq.rawBody;
         this.files = this.expressReq.files;
         this.args = parentData;
         this.parent = parentData;
@@ -322,6 +344,10 @@ class Request {
         }
         return this;
     }
+    setResponseType(type) {
+        this.responseType = type;
+        return this;
+    }
     setQuery(query) {
         this.query = query;
         return this;
@@ -370,24 +396,28 @@ class Request {
         return true;
     }
     async get(url) {
-        return await this.makeRequest(url, async (url) => await axios_1.default.get(url, {
+        return await this.makeRequest(url, async (url) => await axiosInstance.get(url, {
             headers: this.headers,
             timeout: this.timeout,
+            responseType: this.responseType,
         }));
     }
     async post(url, data) {
         return await this.makeRequest(url, async (url) => {
             var _a;
-            return await axios_1.default.post(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
+            return await axiosInstance.post(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
                 timeout: this.timeout,
             });
         });
     }
+    async delete(url, data) {
+        return await this.makeRequest(url, async (url) => { var _a; return await axiosInstance.delete(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}); });
+    }
     async patch(url, data) {
         return await this.makeRequest(url, async (url) => {
             var _a;
-            return await axios_1.default.patch(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
+            return await axiosInstance.patch(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
                 timeout: this.timeout,
             });
@@ -396,7 +426,7 @@ class Request {
     async put(url, data) {
         return await this.makeRequest(url, async (url) => {
             var _a;
-            return await axios_1.default.put(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
+            return await axiosInstance.put(url, (_a = data !== null && data !== void 0 ? data : this.data) !== null && _a !== void 0 ? _a : {}, {
                 headers: this.headers,
                 timeout: this.timeout,
             });
@@ -420,7 +450,9 @@ class Request {
             return response;
         }
         catch (e) {
-            console.error(e);
+            if (this.dumpError) {
+                console.error(e);
+            }
             let response = new response_1.default();
             response.headers = (_a = e.response) === null || _a === void 0 ? void 0 : _a.headers;
             response.statusCode = (_b = e.response) === null || _b === void 0 ? void 0 : _b.status;

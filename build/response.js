@@ -26,6 +26,17 @@ class Response {
         this.redirectTo = url;
         return this;
     }
+    /**
+     * Send raw bytes instead of a JSON envelope, for downloads.
+     * Only honoured on the root service of an HTTP request; on nested
+     * services and over websockets it is ignored and the data stays as it was.
+     */
+    file(bytes, mimeType) {
+        this.statusCode = 200;
+        this.fileBytes = bytes;
+        this.mimeType = mimeType;
+        return this;
+    }
     sendResponseAsWsMessage(response) {
         if (this.wsCLient)
             this.wsCLient.send(JSON.stringify(query_1.default.responseToObject(response)));
