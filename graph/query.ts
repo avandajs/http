@@ -3,6 +3,7 @@ import * as bodyParser from "body-parser";
 import fileUpload from "express-fileupload";
 import cors from "cors";
 import * as http from "http";
+import path from "path";
 import Controller from "./controller";
 import { Request, Response } from "../index";
 import { Sequelize } from "sequelize";
@@ -308,6 +309,32 @@ export default class Query {
 
       if (response instanceof Response && response.fileBytes) {
         res.status(200).type(response.mimeType).send(response.fileBytes);
+        return;
+      }
+
+      if (response instanceof Response && response.streamPath) {
+        response.data = null;
+        if (!path.isAbsolute(response.streamPath)) {
+          response.statusCode = 500;
+          response.message = "Stream path must be absolute";
+          res.status(500).json(Query.responseToObject(response));
+          return;
+        }
+        res.sendFile(
+          response.streamPath,
+          { headers: { "Content-Type": response.mimeType } },
+          (err: any) => {
+            // after headers are sent the client aborted mid-stream
+            if (!err || res.headersSent) return;
+            const status = [412, 416].includes(err.status) ? err.status : 404;
+            response.statusCode = status;
+            response.message = status == 404 ? "File not found" : err.message;
+            res
+              .status(status)
+              .type("json")
+              .json(Query.responseToObject(response));
+          }
+        );
         return;
       }
       let obj = Query.responseToObject(response);

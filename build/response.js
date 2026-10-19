@@ -37,6 +37,18 @@ class Response {
         this.mimeType = mimeType;
         return this;
     }
+    /**
+     * Stream a file from disk with HTTP Range support, for media playback.
+     * filePath must be absolute.
+     * Only honoured on the root service of an HTTP request; on nested
+     * services and over websockets it is ignored and the data stays as it was.
+     */
+    stream(filePath, mimeType) {
+        this.statusCode = 200;
+        this.streamPath = filePath;
+        this.mimeType = mimeType;
+        return this;
+    }
     sendResponseAsWsMessage(response) {
         if (this.wsCLient)
             this.wsCLient.send(JSON.stringify(query_1.default.responseToObject(response)));

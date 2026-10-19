@@ -38,7 +38,7 @@ type MethodsOnly<T> = Pick<
   >
 >;
 
-export type RequestMethods = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type RequestMethods = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
 export default class Request {
   method: RequestMethods = "GET";
   id: string | number;

@@ -16,9 +16,10 @@ export default function (middlewares: Middleware[], method: string) {
       let request = args[1] as Request;
       let response = args[0] as Response;
       let model = args[2] as Model;
+      let requestMethod = request?.method?.toLowerCase();
+      if (requestMethod === "head") requestMethod = "get";
 
-
-      if (request?.method?.toLowerCase() !== method && !request.isWatcher) {
+      if (requestMethod !== method && !request.isWatcher) {
         //invalid request
         return function (...args: any) {
           return response.error(`Bad request type, ${request?.method}`, 500);

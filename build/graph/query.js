@@ -31,6 +31,7 @@ const bodyParser = __importStar(require("body-parser"));
 const express_fileupload_1 = __importDefault(require("express-fileupload"));
 const cors_1 = __importDefault(require("cors"));
 const http = __importStar(require("http"));
+const path_1 = __importDefault(require("path"));
 const index_1 = require("../index");
 const app_1 = require("@avanda/app");
 const ws_1 = __importDefault(require("ws"));
@@ -265,6 +266,28 @@ class Query {
             }
             if (response instanceof index_1.Response && response.fileBytes) {
                 res.status(200).type(response.mimeType).send(response.fileBytes);
+                return;
+            }
+            if (response instanceof index_1.Response && response.streamPath) {
+                response.data = null;
+                if (!path_1.default.isAbsolute(response.streamPath)) {
+                    response.statusCode = 500;
+                    response.message = "Stream path must be absolute";
+                    res.status(500).json(Query.responseToObject(response));
+                    return;
+                }
+                res.sendFile(response.streamPath, { headers: { "Content-Type": response.mimeType } }, (err) => {
+                    // after headers are sent the client aborted mid-stream
+                    if (!err || res.headersSent)
+                        return;
+                    const status = [412, 416].includes(err.status) ? err.status : 404;
+                    response.statusCode = status;
+                    response.message = status == 404 ? "File not found" : err.message;
+                    res
+                        .status(status)
+                        .type("json")
+                        .json(Query.responseToObject(response));
+                });
                 return;
             }
             let obj = Query.responseToObject(response);

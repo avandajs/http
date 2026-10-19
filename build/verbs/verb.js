@@ -12,7 +12,10 @@ function default_1(middlewares, method) {
             let request = args[1];
             let response = args[0];
             let model = args[2];
-            if (((_a = request === null || request === void 0 ? void 0 : request.method) === null || _a === void 0 ? void 0 : _a.toLowerCase()) !== method && !request.isWatcher) {
+            let requestMethod = (_a = request === null || request === void 0 ? void 0 : request.method) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+            if (requestMethod === "head")
+                requestMethod = "get";
+            if (requestMethod !== method && !request.isWatcher) {
                 //invalid request
                 return function (...args) {
                     return response.error(`Bad request type, ${request === null || request === void 0 ? void 0 : request.method}`, 500);

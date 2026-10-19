@@ -1,12 +1,11 @@
 {
   "name": "@avanda/http",
-  "version": "0.5.3",
+  "version": "0.5.5",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "types": "./index.ts",
       "default": "./build/index.js"
     }
@@ -15,7 +14,8 @@
   "license": "MIT",
   "private": false,
   "scripts": {
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "node --test stream.test.js"
   },
   "publishConfig": {
     "access": "public"

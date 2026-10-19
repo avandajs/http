@@ -18,6 +18,7 @@ export default class Response {
   model?: Model;
   wsCLient?: AvandaWebSocket;
   fileBytes?: Buffer;
+  streamPath?: string;
   mimeType?: string;
   constructor() {}
 
@@ -52,6 +53,19 @@ export default class Response {
   file(bytes: Buffer, mimeType: string): Response {
     this.statusCode = 200;
     this.fileBytes = bytes;
+    this.mimeType = mimeType;
+    return this;
+  }
+
+  /**
+   * Stream a file from disk with HTTP Range support, for media playback.
+   * filePath must be absolute.
+   * Only honoured on the root service of an HTTP request; on nested
+   * services and over websockets it is ignored and the data stays as it was.
+   */
+  stream(filePath: string, mimeType: string): Response {
+    this.statusCode = 200;
+    this.streamPath = filePath;
     this.mimeType = mimeType;
     return this;
   }
