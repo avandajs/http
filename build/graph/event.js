@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Broadcastable = exports.EventStorageDriver = void 0;
+const app_1 = require("@avanda/app");
 const events_1 = __importDefault(require("events"));
 const request_1 = __importDefault(require("../request"));
 const query_1 = __importDefault(require("./query"));
@@ -27,7 +28,23 @@ class Event {
     }
     constructor() { }
     static setDriver(driver) { }
+    static channel(event) {
+        return "avanda:event:" + event;
+    }
+    static getSubscriber() {
+        var _a;
+        const redis = app_1.Redis.RedisClient.instance;
+        if (!(redis === null || redis === void 0 ? void 0 : redis.isReady))
+            return null;
+        (_a = Event.subscriber) !== null && _a !== void 0 ? _a : (Event.subscriber = redis.duplicate().connect());
+        return Event.subscriber;
+    }
     static async emitEvent(event, payload) {
+        const redis = app_1.Redis.RedisClient.instance;
+        if (redis === null || redis === void 0 ? void 0 : redis.isReady) {
+            await redis.publish(Event.channel(event), JSON.stringify(payload));
+            return;
+        }
         Event.EventEmitter.emit(event, ...payload);
     }
     static async emit(event, ...payload) {
@@ -52,14 +69,26 @@ class Event {
     static async on(event, callback) {
         //   check if event is in database logged
         console.log(">>>>Listening to event: " + event);
-        Event.EventEmitter.addListener(event, callback).setMaxListeners(1);
+        const isFirstListener = Event.EventEmitter.listenerCount(event) == 0;
+        Event.EventEmitter.on(event, callback);
+        const subscriber = await Event.getSubscriber();
+        if (subscriber && isFirstListener) {
+            await subscriber.subscribe(Event.channel(event), (message) => {
+                Event.EventEmitter.emit(event, ...JSON.parse(message));
+            });
+        }
     }
-    static remove(event) {
+    // drops one listener; the Redis subscription stays while any local listener remains
+    static async remove(event, callback) {
         console.log(">>>>>Removing event: ", event);
-        Event.EventEmitter.removeAllListeners(event);
+        Event.EventEmitter.off(event, callback);
+        if (Event.EventEmitter.listenerCount(event) > 0)
+            return;
+        const subscriber = await Event.getSubscriber();
+        await (subscriber === null || subscriber === void 0 ? void 0 : subscriber.unsubscribe(Event.channel(event)));
     }
 }
-Event.EventEmitter = new events_1.default();
+Event.EventEmitter = new events_1.default().setMaxListeners(0);
 exports.default = Event;
 class Broadcastable {
     defaultPayload() {

@@ -29,7 +29,7 @@ function default_1(middlewares, method) {
             }
             //check for middlewares validity
             let middlewareCheck = await (0, validate_1.default)(middlewares, response, request, model);
-            if (middlewareCheck !== null && !request.isWatcher) {
+            if (middlewareCheck !== null) {
                 return function (...args) {
                     return middlewareCheck;
                 };

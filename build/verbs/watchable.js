@@ -68,8 +68,10 @@ function default_1(props) {
                         let resp = await request.generateResponseFromGraph(false);
                         response.sendResponseAsWsMessage(resp);
                     };
-                    request.onClosedCallback = () => {
-                        event_1.default.remove(eventPath);
+                    const previousClose = request.onClosedCallback;
+                    request.onClosedCallback = async () => {
+                        await (previousClose === null || previousClose === void 0 ? void 0 : previousClose());
+                        await event_1.default.remove(eventPath, eventCallback);
                     };
                     event_1.default.on(eventPath, eventCallback);
                     // send default payload to client if exist

@@ -68,7 +68,7 @@ export default class Request {
   timeout?: number;
   expressRes: express.Response;
   executeWatchable: boolean = true;
-  onClosedCallback?: () => void;
+  onClosedCallback?: (code?: number) => void | Promise<void>;
 
   constructor() { }
 
@@ -210,7 +210,7 @@ export default class Request {
             (service.t && service.t === "c" && !selectAll)
           ) {
             let column = typeof service == "string" ? service : service.n;
-            if (toExclude?.includes?.(column.trim())) continue;
+            if (column == "*" || toExclude?.includes?.(column.trim())) continue;
 
             datum[column] = data[column] ?? null;
           } else {

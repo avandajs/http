@@ -70,8 +70,10 @@ export default function (props: WatchableProps): any {
             response.sendResponseAsWsMessage(resp);
           }
 
-          request.onClosedCallback = () => {
-            Event.remove(eventPath);
+          const previousClose = request.onClosedCallback;
+          request.onClosedCallback = async () => {
+            await previousClose?.();
+            await Event.remove(eventPath, eventCallback);
           };
 
           Event.on(eventPath, eventCallback);

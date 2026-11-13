@@ -42,6 +42,8 @@ const version = "0.3.102";
 const cli_1 = require("@avanda/cli");
 const clients_1 = __importDefault(require("./clients"));
 const event_1 = __importDefault(require("./event"));
+const socket_1 = __importDefault(require("../socket"));
+const streamable_1 = require("../verbs/streamable");
 // let CLIENTS: WebSocketClient[] = [];
 /*
  *
@@ -328,11 +330,63 @@ class Query {
         await client.request.generateResponseFromGraph(true, client.service, true, undefined, undefined, undefined, "watcher", client.client);
         client.busy = false;
     }
-    handleConnectionAbortion(websocketConnection) {
+    // frames are handed over one at a time, each waiting for the previous handler to settle
+    serveStream(client, props) {
+        var _a;
+        const connection = client.client;
+        const socket = new socket_1.default(connection);
+        const maxPayload = (_a = props.maxPayload) !== null && _a !== void 0 ? _a : 1024 * 1024;
+        let queue = client.request
+            .generateResponseFromGraph(false, client.service, true, undefined, undefined, undefined, "watcher", connection)
+            .catch((e) => {
+            var _a;
+            socket.send(new index_1.Response().error((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : "Stream failed"));
+            socket.close(1011, "Stream failed");
+            return null;
+        });
+        connection.on("message", (message, isBinary) => {
+            if (connection.readyState !== ws_1.default.OPEN)
+                return;
+            if (message.length > maxPayload) {
+                socket.close(1009, "Frame exceeds maxPayload");
+                return;
+            }
+            queue = queue.then(async (handlers) => {
+                var _a, _b, _c;
+                try {
+                    if (isBinary)
+                        await ((_a = handlers === null || handlers === void 0 ? void 0 : handlers.onBinary) === null || _a === void 0 ? void 0 : _a.call(handlers, message));
+                    else
+                        await ((_b = handlers === null || handlers === void 0 ? void 0 : handlers.onMessage) === null || _b === void 0 ? void 0 : _b.call(handlers, JSON.parse(message.toString())));
+                }
+                catch (e) {
+                    socket.send(new index_1.Response().error((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : "Invalid frame"));
+                }
+                return handlers;
+            });
+        });
+        client.request.onClosedCallback = async (code) => {
+            var _a;
+            const handlers = await queue;
+            try {
+                await ((_a = handlers === null || handlers === void 0 ? void 0 : handlers.onClose) === null || _a === void 0 ? void 0 : _a.call(handlers, code));
+            }
+            catch (e) {
+                console.error("stream onClose failed:", e);
+            }
+        };
+    }
+    async handleConnectionAbortion(websocketConnection, code) {
+        var _a, _b;
         let closedClient = clients_1.default.activeClients.find((client) => client.client.clientId == websocketConnection.clientId);
-        if (typeof closedClient.request.onClosedCallback == "function")
-            closedClient.request.onClosedCallback();
-        clients_1.default.activeClients = clients_1.default.activeClients.filter((client) => client.client.clientId != websocketConnection.clientId);
+        if (!closedClient)
+            return;
+        try {
+            await ((_b = (_a = closedClient.request).onClosedCallback) === null || _b === void 0 ? void 0 : _b.call(_a, code));
+        }
+        finally {
+            await clients_1.default.remove(websocketConnection.clientId);
+        }
         console.log("disconnected client: " + websocketConnection.clientId);
         if (clients_1.default.activeClients.length < 1 && this.watcherIntervalInstance) {
             // stop watch interval
@@ -353,20 +407,30 @@ class Query {
         });
         websocketServer.on("connection", async (websocketConnection, connectionRequest) => {
             var _a;
-            const [_path, params] = (_a = connectionRequest === null || connectionRequest === void 0 ? void 0 : connectionRequest.url) === null || _a === void 0 ? void 0 : _a.split("?");
-            const connectionParams = query_string_1.default.parse(params);
             const clientId = (0, uuid_1.v4)();
             let request = Object.assign(Object.create(Object.getPrototypeOf(this.app.request)), this.app.request);
             let response = Object.assign(Object.create(Object.getPrototypeOf(this.app.response)), this.app.response);
             let avandaRequest = new index_1.Request();
-            request.body = connectionParams.data
-                ? JSON.parse(connectionParams.data)
-                : undefined;
+            let service;
+            try {
+                const [_path, params] = connectionRequest.url.split("?");
+                const connectionParams = query_string_1.default.parse(params !== null && params !== void 0 ? params : "");
+                request.body = connectionParams.data
+                    ? JSON.parse(connectionParams.data)
+                    : undefined;
+                service = JSON.parse(connectionParams.query);
+            }
+            catch (e) {
+                websocketConnection.close(1007, "Invalid query or data");
+                return;
+            }
             request.headers = connectionRequest.headers;
             request.statusCode = connectionRequest.statusCode;
             request.statusMessage = connectionRequest.statusMessage;
             request.requestId = clientId;
-            const service = JSON.parse(connectionParams.query);
+            const controller = this.controllers[service === null || service === void 0 ? void 0 : service.n];
+            const streamable = controller &&
+                Reflect.getMetadata(streamable_1.streamableMetadataKey, controller.prototype, (_a = service.f) !== null && _a !== void 0 ? _a : "get");
             websocketConnection.clientId = clientId; //
             websocketConnection.clientIndex = clients_1.default.activeClients.length; //
             websocketConnection.service = service; //
@@ -379,25 +443,6 @@ class Query {
             // avandaRequest.method
             // NOTE: connectParams are not used here but good to understand how to get
             // to them if you need to pass data with the connection to identify it (e.g., a userId).
-            websocketConnection.on("message", async (message) => {
-                // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
-                request.body = message
-                    ? JSON.parse(message)
-                    : {};
-                let res = await avandaRequest.generateResponseFromGraph(false);
-                let obj = Query.responseToObject(res);
-                websocketConnection.send(JSON.stringify(obj));
-            });
-            websocketConnection.on("close", (client) => {
-                this.handleConnectionAbortion(websocketConnection);
-            });
-            websocketConnection.on("end", (client) => {
-                this.handleConnectionAbortion(websocketConnection);
-            });
-            //
-            websocketConnection.on("aborted", (client) => {
-                this.handleConnectionAbortion(websocketConnection);
-            });
             let client = {
                 client: websocketConnection,
                 id: websocketConnection.clientId,
@@ -407,18 +452,52 @@ class Query {
                 busy: false,
                 request: avandaRequest,
             };
-            clients_1.default.activeClients.push(client);
+            if (streamable) {
+                this.serveStream(client, streamable);
+            }
+            else {
+                websocketConnection.on("message", async (message) => {
+                    var _a;
+                    // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
+                    let res;
+                    try {
+                        request.body = message
+                            ? JSON.parse(message)
+                            : {};
+                        res = await avandaRequest.generateResponseFromGraph(false);
+                    }
+                    catch (e) {
+                        res = new index_1.Response().error((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : "Invalid frame");
+                    }
+                    let obj = Query.responseToObject(res);
+                    websocketConnection.send(JSON.stringify(obj));
+                });
+            }
+            websocketConnection.on("close", (code) => {
+                this.handleConnectionAbortion(websocketConnection, code);
+            });
+            websocketConnection.on("end", (client) => {
+                this.handleConnectionAbortion(websocketConnection);
+            });
+            //
+            websocketConnection.on("aborted", (client) => {
+                this.handleConnectionAbortion(websocketConnection);
+            });
+            await clients_1.default.add(client);
             console.log(">> new connection", {
                 clientId,
-                CLIENTS: clients_1.default.activeClients.length,
+                CLIENTS: await clients_1.default.count(),
             });
-            this.sendResponseToClient(client);
+            if (!streamable)
+                this.sendResponseToClient(client);
         });
         return websocketServer;
     }
     listen() {
         if (!this.app)
             throw new Error("Execute before you listen");
+        // without Redis, websocket clients and events stay local to this instance
+        app_1.Redis.RedisClient.connect().catch((e) => console.error("Redis unavailable, websocket events are local only:", e));
         let ipAddress = ip_1.default.address("public");
         // network.
         this.server.listen(this.port, () => {

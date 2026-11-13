@@ -39,7 +39,7 @@ export default function (middlewares: Middleware[], method: string) {
         request,
         model
       );
-      if (middlewareCheck !== null && !request.isWatcher) {
+      if (middlewareCheck !== null) {
         return function (...args: any) {
           return middlewareCheck;
         };

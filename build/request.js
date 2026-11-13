@@ -142,7 +142,7 @@ class Request {
                     if (typeof service == "string" ||
                         (service.t && service.t === "c" && !selectAll)) {
                         let column = typeof service == "string" ? service : service.n;
-                        if ((_b = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _b === void 0 ? void 0 : _b.call(toExclude, column.trim()))
+                        if (column == "*" || ((_b = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _b === void 0 ? void 0 : _b.call(toExclude, column.trim())))
                             continue;
                         datum[column] = (_c = data[column]) !== null && _c !== void 0 ? _c : null;
                     }
