@@ -21,7 +21,6 @@ import AvandaWebSocket from "../types/AvandaWebSocket";
 import AvandaHttpRequest from "../types/AvandaHttpRequest";
 import ip from "ip";
 const version = "0.3.102";
-import { Out } from "@avanda/cli";
 import Client from "./clients";
 import Event, { EventStorageDriver } from "./event";
 import { RequestMethods } from "../request";
@@ -721,7 +720,11 @@ export default class Query {
     // network.
 
     this.server.listen(this.port, () => {
-      Out.success(`@avanda/http v${version} dev server running at:`, false);
+      // was Out.success() from @avanda/cli, which pulled a CLI toolchain into
+      // every production install for this one line; same output, no dependency
+      console.log(
+        `\n\x1b[32m@avanda/http v${version} dev server running at:\x1b[0m`
+      );
       console.log(`
 > Local:    http://localhost:${this.port}/
 > Network:  http://${ipAddress}:${this.port}/`);

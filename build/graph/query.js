@@ -41,7 +41,6 @@ const query_string_1 = __importDefault(require("query-string"));
 const uuid_1 = require("uuid");
 const ip_1 = __importDefault(require("ip"));
 const version = "0.3.102";
-const cli_1 = require("@avanda/cli");
 const clients_1 = __importDefault(require("./clients"));
 const event_1 = __importDefault(require("./event"));
 const socket_1 = __importDefault(require("../socket"));
@@ -606,7 +605,9 @@ class Query {
         let ipAddress = ip_1.default.address("public");
         // network.
         this.server.listen(this.port, () => {
-            cli_1.Out.success(`@avanda/http v${version} dev server running at:`, false);
+            // was Out.success() from @avanda/cli, which pulled a CLI toolchain into
+            // every production install for this one line; same output, no dependency
+            console.log(`\n\x1b[32m@avanda/http v${version} dev server running at:\x1b[0m`);
             console.log(`
 > Local:    http://localhost:${this.port}/
 > Network:  http://${ipAddress}:${this.port}/`);
