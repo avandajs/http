@@ -30,11 +30,13 @@ const validate_1 = __importDefault(require("../middleware/validate"));
 require("reflect-metadata");
 const event_1 = __importStar(require("../graph/event"));
 const errors_1 = require("../errors");
+const exposed_1 = require("./exposed");
 function default_1(props) {
     props.immediate =
         typeof props.immediate == "undefined" ? true : props.immediate;
     return function (target, propertyKey, descriptor) {
         // target.watched[''];
+        (0, exposed_1.expose)(target, propertyKey);
         // descriptor.
         const originalMethod = descriptor.value;
         descriptor.value = async function (...args) {
@@ -45,6 +47,10 @@ function default_1(props) {
             let key = propertyKey;
             let hasStartedWatch = Reflect.getOwnMetadata(watchedMetadataKey, target, key) || false;
             if (!request.executeWatchable || hasStartedWatch) {
+                // a plain call (HTTP, a graph frame, an event delivery) is guarded like the subscription is
+                const denied = await (0, validate_1.default)(props.middlewares, response, request, model);
+                if (denied)
+                    return denied;
                 return await originalMethod.apply(this, args);
             }
             if (typeof props.event != "undefined") {

@@ -7,10 +7,12 @@ exports.streamableMetadataKey = void 0;
 const socket_1 = __importDefault(require("../socket"));
 const validate_1 = __importDefault(require("../middleware/validate"));
 require("reflect-metadata");
+const exposed_1 = require("./exposed");
 exports.streamableMetadataKey = "avanda:streamable";
 function default_1(props = {}) {
     return function (target, propertyKey, descriptor) {
         Reflect.defineMetadata(exports.streamableMetadataKey, props, target, propertyKey);
+        (0, exposed_1.expose)(target, propertyKey);
         const originalMethod = descriptor.value;
         descriptor.value = async function (...args) {
             let response = args[0];
