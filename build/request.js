@@ -12,7 +12,10 @@ const orm_1 = require("@avanda/orm");
 const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
 const dns_1 = __importDefault(require("dns"));
+const errors_1 = require("./errors");
+const exposed_1 = require("./verbs/exposed");
 dns_1.default.setDefaultResultOrder("ipv4first");
+const hasOwn = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
 const axiosInstance = axios_1.default.create({
     httpAgent: new http_1.default.Agent({
         keepAlive: true,
@@ -142,7 +145,7 @@ class Request {
                     if (typeof service == "string" ||
                         (service.t && service.t === "c" && !selectAll)) {
                         let column = typeof service == "string" ? service : service.n;
-                        if ((_b = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _b === void 0 ? void 0 : _b.call(toExclude, column.trim()))
+                        if (column == "*" || ((_b = toExclude === null || toExclude === void 0 ? void 0 : toExclude.includes) === null || _b === void 0 ? void 0 : _b.call(toExclude, column.trim())))
                             continue;
                         datum[column] = (_c = data[column]) !== null && _c !== void 0 ? _c : null;
                     }
@@ -216,7 +219,7 @@ class Request {
             }
             if (service.ft) {
                 //apply filters
-                model = query_1.default.bindFilters(model, service.ft);
+                model = query_1.default.bindFilters(model, service.ft, controller);
             }
         }
         // if (cacheResponse && cache_key && this.caches.hasOwnProperty(cache_key)) {
@@ -229,8 +232,11 @@ class Request {
         this.model = model;
         response.model = model;
         response.wsCLient = wsClient;
-        if (typeof controller[fnc] != "function")
-            throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`);
+        // only methods a verb, @Watchable or @Streamable decorator registered
+        if (typeof fnc != "string" ||
+            !(0, exposed_1.isExposed)(controller, fnc) ||
+            typeof controller[fnc] != "function")
+            throw new errors_1.ServiceNotFoundError(`function ${JSON.stringify(fnc)} does not exist in ${serviceName}`);
         let fncResponse = await controller[fnc](response, this, controller.model);
         // if (cacheResponse && cache_key) {
         //   this.caches[cache_key] = fncResponse;
@@ -246,8 +252,10 @@ class Request {
         let type = service.t;
         let children = service.c;
         let data = null;
-        if (!(name in this.controllers)) {
-            throw new Error("Invalid controller name: " + name);
+        if (typeof name != "string" ||
+            !this.controllers ||
+            !hasOwn(this.controllers, name)) {
+            throw new errors_1.ServiceNotFoundError("invalid controller name: " + JSON.stringify(name));
         }
         let controller = _controller !== null && _controller !== void 0 ? _controller : (await this.getController(service));
         let toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;

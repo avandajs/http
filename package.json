@@ -1,6 +1,6 @@
 {
   "name": "@avanda/http",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "Avanda http module ",
   "main": "build/index.js",
   "types": "index.ts",
@@ -15,13 +15,13 @@
   "private": false,
   "scripts": {
     "dev": "tsc --watch",
-    "test": "node --test stream.test.js"
+    "test": "node --test stream.test.js socket.test.js routes.test.js security.test.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@avanda/app": "^2.7.1",
+    "@avanda/app": "^2.7.8",
     "@avanda/cli": "^0.9.5",
     "@avanda/core": "0.0.7",
     "@avanda/orm": "^0.3.0",

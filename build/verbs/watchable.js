@@ -29,11 +29,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const validate_1 = __importDefault(require("../middleware/validate"));
 require("reflect-metadata");
 const event_1 = __importStar(require("../graph/event"));
+const errors_1 = require("../errors");
+const exposed_1 = require("./exposed");
 function default_1(props) {
     props.immediate =
         typeof props.immediate == "undefined" ? true : props.immediate;
     return function (target, propertyKey, descriptor) {
         // target.watched[''];
+        (0, exposed_1.expose)(target, propertyKey);
         // descriptor.
         const originalMethod = descriptor.value;
         descriptor.value = async function (...args) {
@@ -44,6 +47,10 @@ function default_1(props) {
             let key = propertyKey;
             let hasStartedWatch = Reflect.getOwnMetadata(watchedMetadataKey, target, key) || false;
             if (!request.executeWatchable || hasStartedWatch) {
+                // a plain call (HTTP, a graph frame, an event delivery) is guarded like the subscription is
+                const denied = await (0, validate_1.default)(props.middlewares, response, request, model);
+                if (denied)
+                    return denied;
                 return await originalMethod.apply(this, args);
             }
             if (typeof props.event != "undefined") {
@@ -61,17 +68,32 @@ function default_1(props) {
                     }
                     if (!eventPath)
                         return null;
+                    // runs as an event listener and from timers, where nothing awaits it,
+                    // so it must never reject
                     const eventCallback = async (payload) => {
-                        payload =
-                            typeof payload == "string" ? JSON.parse(payload) : payload;
-                        request.setPayload(payload);
-                        let resp = await request.generateResponseFromGraph(false);
-                        response.sendResponseAsWsMessage(resp);
+                        try {
+                            payload =
+                                typeof payload == "string" ? JSON.parse(payload) : payload;
+                            request.setPayload(payload);
+                            let resp = await request.generateResponseFromGraph(false);
+                            response.sendResponseAsWsMessage(resp);
+                        }
+                        catch (e) {
+                            (0, errors_1.logRenderError)(`watch event ${eventPath}`, e);
+                            try {
+                                response.sendResponseAsWsMessage((0, errors_1.clientErrorResponse)(e));
+                            }
+                            catch (sendError) {
+                                console.error("[avanda/http] websocket send failed:", sendError);
+                            }
+                        }
                     };
-                    request.onClosedCallback = () => {
-                        event_1.default.remove(eventPath);
+                    const previousClose = request.onClosedCallback;
+                    request.onClosedCallback = async () => {
+                        await (previousClose === null || previousClose === void 0 ? void 0 : previousClose());
+                        await event_1.default.remove(eventPath, eventCallback);
                     };
-                    event_1.default.on(eventPath, eventCallback);
+                    event_1.default.on(eventPath, eventCallback).catch((e) => console.error(`[avanda/http] could not listen to ${eventPath}:`, e));
                     // send default payload to client if exist
                     if (defaultPayload) {
                         eventCallback(defaultPayload);

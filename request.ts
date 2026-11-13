@@ -16,7 +16,13 @@ import Query from "./graph/query";
 import { isPlainObject, omit, snakeCase } from "lodash";
 import cache from "global-cache";
 import dns from "dns";
+import { ServiceNotFoundError } from "./errors";
+import { isExposed } from "./verbs/exposed";
 dns.setDefaultResultOrder("ipv4first");
+
+const hasOwn = (target: any, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(target, key);
+
 
 const axiosInstance = axios.create({
   httpAgent: new http.Agent({
@@ -68,7 +74,7 @@ export default class Request {
   timeout?: number;
   expressRes: express.Response;
   executeWatchable: boolean = true;
-  onClosedCallback?: () => void;
+  onClosedCallback?: (code?: number) => void | Promise<void>;
 
   constructor() { }
 
@@ -210,7 +216,7 @@ export default class Request {
             (service.t && service.t === "c" && !selectAll)
           ) {
             let column = typeof service == "string" ? service : service.n;
-            if (toExclude?.includes?.(column.trim())) continue;
+            if (column == "*" || toExclude?.includes?.(column.trim())) continue;
 
             datum[column] = data[column] ?? null;
           } else {
@@ -302,7 +308,7 @@ export default class Request {
 
       if (service.ft) {
         //apply filters
-        model = Query.bindFilters(model, service.ft);
+        model = Query.bindFilters(model, service.ft, controller);
       }
     }
 
@@ -318,8 +324,15 @@ export default class Request {
     response.model = model;
     response.wsCLient = wsClient;
 
-    if (typeof controller[fnc] != "function")
-      throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`);
+    // only methods a verb, @Watchable or @Streamable decorator registered
+    if (
+      typeof fnc != "string" ||
+      !isExposed(controller, fnc) ||
+      typeof controller[fnc] != "function"
+    )
+      throw new ServiceNotFoundError(
+        `function ${JSON.stringify(fnc)} does not exist in ${serviceName}`
+      );
 
     let fncResponse = await controller[fnc](response, this, controller.model);
     // if (cacheResponse && cache_key) {
@@ -347,8 +360,14 @@ export default class Request {
     let children = service.c;
 
     let data: Datum<any> | null = null;
-    if (!(name in this.controllers)) {
-      throw new Error("Invalid controller name: " + name);
+    if (
+      typeof name != "string" ||
+      !this.controllers ||
+      !hasOwn(this.controllers, name)
+    ) {
+      throw new ServiceNotFoundError(
+        "invalid controller name: " + JSON.stringify(name)
+      );
     }
 
     let controller = _controller ?? (await this.getController(service));

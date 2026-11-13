@@ -6,13 +6,13 @@ import * as http from "http";
 import path from "path";
 import Controller from "./controller";
 import { Request, Response } from "../index";
-import { Sequelize } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import { Model } from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
 import Filters from "../types/Filters";
 import { isPlainObject, omit, snakeCase } from "lodash";
-import { Env, serverConfig } from "@avanda/app";
+import { Env, Redis, serverConfig } from "@avanda/app";
 import WebSocket from "ws";
 import queryString from "query-string";
 import WebSocketClient from "../types/WebSocketClient";
@@ -25,6 +25,16 @@ import { Out } from "@avanda/cli";
 import Client from "./clients";
 import Event, { EventStorageDriver } from "./event";
 import { RequestMethods } from "../request";
+import StreamSocket from "../socket";
+import StreamableProps from "../types/StreamableProps";
+import StreamHandlers from "../types/StreamHandlers";
+import { streamableMetadataKey } from "../verbs/streamable";
+import {
+  InvalidFrameError,
+  InvalidQueryError,
+  clientErrorResponse,
+  logRenderError,
+} from "../errors";
 // let CLIENTS: WebSocketClient[] = [];
 
 /*
@@ -46,7 +56,6 @@ export default class Query {
   websocketPath: string = "/watch";
 
   autoLink?: boolean;
-  corsRejected?: boolean = true;
   connection: Promise<Sequelize> | Sequelize;
   models: { [model: string]: any } = {};
   controllers: { [model: string]: typeof Controller } = {};
@@ -80,6 +89,14 @@ export default class Query {
     });
   }
 
+  // A request without an Origin header isn't a cross-site browser request.
+  // One with an Origin must be whitelisted, or be the server's own origin.
+  isRequestAllowed(origin?: string, host?: string): boolean {
+    if (!origin || this.serverConfig.disableCORS) return true;
+    if (this.isOriginAllowed(origin)) return true;
+    return !!host && origin.split("://")[1] === host;
+  }
+
   execute(
     models: { [k: string]: any },
     controllers: { [k: string]: any },
@@ -88,6 +105,18 @@ export default class Query {
     this.models = models;
     this.controllers = controllers;
     Event.setDriver(eventDriver);
+
+    // before anything is parsed or run, and on every route
+    this.app.use((req, res, next) => {
+      if (this.isRequestAllowed(req.headers.origin, req.headers.host))
+        return next();
+      res.status(403).json({
+        msg: "CORS Rejected",
+        data: null,
+        status_code: 403,
+        total_pages: 0,
+      });
+    });
 
     this.app.use(
       bodyParser.json({
@@ -102,15 +131,9 @@ export default class Query {
     this.app.use(
       cors({
         credentials: true,
-        origin: (origin, callback) => {
-          if (!origin || this.isOriginAllowed(origin)) {
-            this.corsRejected = false;
-            callback(null, true);
-          } else {
-            this.corsRejected = true;
-            callback(null, true);
-          }
-        },
+        // CORS headers only go to origins that pass; the others were already refused above
+        origin: (origin, callback) =>
+          callback(null, this.isRequestAllowed(origin)),
       })
     );
     this.app.use(
@@ -131,12 +154,33 @@ export default class Query {
     this.app.post(
       Query.eventPath,
       async (req: AvandaHttpRequest, res: express.Response) => {
-        let { payload, event } = req.body;
-        if (!payload || !event) return;
+        // only another service holding the shared secret may emit here
+        if (!Event.isAuthorized(req.headers[Event.secretHeader])) {
+          const response = new Response();
+          response.statusCode = 403;
+          response.message = "Forbidden";
+          response.data = null;
+          res.status(403).json(Query.responseToObject(response));
+          return;
+        }
+
+        let { payload, event } = req.body ?? {};
+        if (!payload || !event || typeof event != "string") {
+          const response = new Response();
+          response.statusCode = 400;
+          response.message = "payload and event are required";
+          response.data = null;
+          res.status(400).json(Query.responseToObject(response));
+          return;
+        }
 
         try {
           payload = JSON.parse(payload);
-          Event.emitEvent(event, payload);
+          if (!Array.isArray(payload)) {
+            res.status(400).json({ error: "payload must be a JSON array" });
+            return;
+          }
+          await Event.emitEvent(event, payload);
           res.json({ event, status: "emitted" });
         } catch (e) {
           res.json({ error: e });
@@ -156,7 +200,11 @@ export default class Query {
           al: true,
           c: ["*"],
         };
-        this.renderServiceFromQuery(req, res, service);
+        try {
+          await this.renderServiceFromQuery(req, res, service);
+        } catch (e) {
+          this.sendRenderError(req, res, e);
+        }
         return;
       }
     );
@@ -166,19 +214,15 @@ export default class Query {
     this.app.all(
       this.httpPath,
       async (req: AvandaHttpRequest, res: express.Response) => {
-        let query = req.query.query as string;
+        let query = req.query.query;
 
-        if (this.corsRejected && !this.serverConfig.disableCORS) {
-          res.json({
-            msg: "CORS Rejected",
-            data: null,
-            status: 500,
-            total_pages: 0,
-          });
-          return;
-        } else if (query) {
-          let service = JSON.parse(query) as Service;
-          this.renderServiceFromQuery(req, res, service);
+        if (query) {
+          try {
+            let service = Query.parseService(query);
+            await this.renderServiceFromQuery(req, res, service);
+          } catch (e) {
+            this.sendRenderError(req, res, e);
+          }
           return;
         }
 
@@ -265,6 +309,41 @@ export default class Query {
 
     return this;
   }
+
+  // malformed JSON, or JSON that isn't an object, is the client's mistake: 400
+  private static parseService(query: unknown): Service {
+    let service: unknown;
+    try {
+      service = JSON.parse(query as string);
+    } catch (e) {
+      throw new InvalidQueryError();
+    }
+    if (!isPlainObject(service)) throw new InvalidQueryError();
+    return service as Service;
+  }
+
+  // a websocket text frame that isn't JSON is the client's mistake: 400
+  private static parseFrame(frame: unknown): any {
+    try {
+      return JSON.parse(frame as string);
+    } catch (e) {
+      throw new InvalidFrameError();
+    }
+  }
+
+  // the real error is logged here and never leaves the server
+  private sendRenderError(
+    req: AvandaHttpRequest,
+    res: express.Response,
+    e: unknown
+  ) {
+    logRenderError(`${req.method} ${req.path}`, e);
+    // a controller may already have responded through expressRes
+    if (res.headersSent) return;
+    const response = clientErrorResponse(e);
+    res.status(response.statusCode).json(Query.responseToObject(response));
+  }
+
   async renderServiceFromQuery(
     req: AvandaHttpRequest,
     res: express.Response,
@@ -294,6 +373,8 @@ export default class Query {
     if (service) {
       let response = await request.generateResponseFromGraph(false);
       request.data = response;
+      // the controller answered through expressRes itself, nothing left to write
+      if (res.headersSent) return;
       res.setHeader(
         "Access-Control-Allow-Headers",
         "Content-Type, X-Auth-Token, Origin, Authorization"
@@ -379,30 +460,109 @@ export default class Query {
     }
 
     client.busy = true;
-    await client.request.generateResponseFromGraph(
-      true,
-      client.service,
-      true,
-      undefined,
-      undefined,
-      undefined,
-      "watcher",
-      client.client
-    );
-
-    client.busy = false;
+    try {
+      await client.request.generateResponseFromGraph(
+        true,
+        client.service,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        "watcher",
+        client.client
+      );
+    } catch (e) {
+      logRenderError(`watch ${client.id}`, e);
+      Query.sendToSocket(client.client, clientErrorResponse(e));
+    } finally {
+      client.busy = false;
+    }
   }
 
-  handleConnectionAbortion(websocketConnection: AvandaWebSocket) {
+  // never throws: a socket that went away or a response that can't be serialised is only logged
+  private static sendToSocket(connection: AvandaWebSocket, response: any) {
+    try {
+      if (connection.readyState !== WebSocket.OPEN) return;
+      connection.send(JSON.stringify(Query.responseToObject(response)));
+    } catch (e) {
+      console.error("[avanda/http] websocket send failed:", e);
+    }
+  }
+
+  // close/end/aborted listeners can't await, so a failed cleanup is logged here
+  private abortConnection(websocketConnection: AvandaWebSocket, code?: number) {
+    this.handleConnectionAbortion(websocketConnection, code).catch((e) =>
+      console.error("[avanda/http] websocket cleanup failed:", e)
+    );
+  }
+
+  // frames are handed over one at a time, each waiting for the previous handler to settle
+  private serveStream(client: WebSocketClient, props: StreamableProps) {
+    const connection = client.client;
+    const socket = new StreamSocket(connection);
+    const maxPayload = props.maxPayload ?? 1024 * 1024;
+
+    let queue: Promise<StreamHandlers | null> = client.request
+      .generateResponseFromGraph(
+        false,
+        client.service,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        "watcher",
+        connection
+      )
+      .catch((e) => {
+        logRenderError(`stream ${client.id}`, e);
+        socket.send(clientErrorResponse(e));
+        socket.close(1011, "Stream failed");
+        return null;
+      });
+
+    connection.on("message", (message: Buffer, isBinary: boolean) => {
+      if (connection.readyState !== WebSocket.OPEN) return;
+      if (message.length > maxPayload) {
+        socket.close(1009, "Frame exceeds maxPayload");
+        return;
+      }
+
+      queue = queue.then(async (handlers) => {
+        try {
+          if (isBinary) await handlers?.onBinary?.(message);
+          else await handlers?.onMessage?.(Query.parseFrame(message.toString()));
+        } catch (e) {
+          logRenderError(`stream frame ${client.id}`, e);
+          socket.send(clientErrorResponse(e));
+        }
+        return handlers;
+      });
+    });
+
+    client.request.onClosedCallback = async (code) => {
+      const handlers = await queue;
+      try {
+        await handlers?.onClose?.(code);
+      } catch (e) {
+        console.error("stream onClose failed:", e);
+      }
+    };
+  }
+
+  async handleConnectionAbortion(
+    websocketConnection: AvandaWebSocket,
+    code?: number
+  ) {
     let closedClient = Client.activeClients.find(
       (client) => client.client.clientId == websocketConnection.clientId
     );
-    if (typeof closedClient.request.onClosedCallback == "function")
-      closedClient.request.onClosedCallback();
+    if (!closedClient) return;
 
-    Client.activeClients = Client.activeClients.filter(
-      (client) => client.client.clientId != websocketConnection.clientId
-    );
+    try {
+      await closedClient.request.onClosedCallback?.(code);
+    } finally {
+      await Client.remove(websocketConnection.clientId);
+    }
     console.log("disconnected client: " + websocketConnection.clientId);
     if (Client.activeClients.length < 1 && this.watcherIntervalInstance) {
       // stop watch interval
@@ -420,6 +580,15 @@ export default class Query {
     });
 
     express.on("upgrade", (request, socket, head) => {
+      // browsers send Origin on every websocket handshake and never ask CORS first
+      if (
+        !this.isRequestAllowed(request.headers.origin, request.headers.host)
+      ) {
+        socket.end(
+          "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+        );
+        return;
+      }
       websocketServer.handleUpgrade(request, socket, head, (websocket) => {
         websocketServer.emit("connection", websocket, request);
       });
@@ -428,8 +597,6 @@ export default class Query {
     websocketServer.on(
       "connection",
       async (websocketConnection: AvandaWebSocket, connectionRequest) => {
-        const [_path, params] = connectionRequest?.url?.split("?");
-        const connectionParams = queryString.parse(params);
         const clientId = uuid();
         let request = Object.assign(
           Object.create(Object.getPrototypeOf(this.app.request)),
@@ -440,16 +607,35 @@ export default class Query {
           this.app.response
         );
         let avandaRequest = new Request();
-        request.body = connectionParams.data
-          ? JSON.parse(connectionParams.data as unknown as string)
-          : undefined;
+        let service: Service;
+        try {
+          const [_path, params] = connectionRequest.url.split("?");
+          const connectionParams = queryString.parse(params ?? "");
+          request.body = connectionParams.data
+            ? JSON.parse(connectionParams.data as unknown as string)
+            : undefined;
+          service = Query.parseService(connectionParams.query);
+        } catch (e) {
+          websocketConnection.close(1007, "Invalid query or data");
+          return;
+        }
         request.headers = connectionRequest.headers;
         request.statusCode = connectionRequest.statusCode;
         request.statusMessage = connectionRequest.statusMessage;
         request.requestId = clientId;
-        const service = JSON.parse(
-          connectionParams.query as unknown as string
-        ) as unknown as Service;
+        // own keys only: "__proto__" or "constructor" must not resolve to a controller
+        const controller =
+          typeof service.n == "string" &&
+          Object.prototype.hasOwnProperty.call(this.controllers, service.n)
+            ? this.controllers[service.n]
+            : undefined;
+        const streamable: StreamableProps | undefined =
+          controller &&
+          Reflect.getMetadata(
+            streamableMetadataKey,
+            controller.prototype,
+            service.f ?? "get"
+          );
 
         websocketConnection.clientId = clientId; //
         websocketConnection.clientIndex = Client.activeClients.length; //
@@ -465,28 +651,6 @@ export default class Query {
         // NOTE: connectParams are not used here but good to understand how to get
         // to them if you need to pass data with the connection to identify it (e.g., a userId).
 
-        websocketConnection.on("message", async (message) => {
-          // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
-          request.body = message
-            ? JSON.parse(message as unknown as string)
-            : {};
-          let res = await avandaRequest.generateResponseFromGraph(false);
-          let obj = Query.responseToObject(res);
-          websocketConnection.send(JSON.stringify(obj));
-        });
-
-        websocketConnection.on("close", (client: AvandaWebSocket) => {
-          this.handleConnectionAbortion(websocketConnection);
-        });
-
-        websocketConnection.on("end", (client: AvandaWebSocket) => {
-          this.handleConnectionAbortion(websocketConnection);
-        });
-        //
-        websocketConnection.on("aborted", (client: AvandaWebSocket) => {
-          this.handleConnectionAbortion(websocketConnection);
-        });
-
         let client = {
           client: websocketConnection,
           id: websocketConnection.clientId,
@@ -497,14 +661,48 @@ export default class Query {
           request: avandaRequest,
         };
 
-        Client.activeClients.push(client);
+        if (streamable) {
+          this.serveStream(client, streamable);
+        } else {
+          websocketConnection.on("message", async (message) => {
+            // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
+            let res;
+            try {
+              request.body = message ? Query.parseFrame(message) : {};
+              res = await avandaRequest.generateResponseFromGraph(false);
+            } catch (e) {
+              logRenderError(`frame ${clientId}`, e);
+              res = clientErrorResponse(e);
+            }
+            Query.sendToSocket(websocketConnection, res);
+          });
+        }
 
-        console.log(">> new connection", {
-          clientId,
-          CLIENTS: Client.activeClients.length,
+        websocketConnection.on("close", (code: number) => {
+          this.abortConnection(websocketConnection, code);
         });
 
-        this.sendResponseToClient(client);
+        websocketConnection.on("end", (client: AvandaWebSocket) => {
+          this.abortConnection(websocketConnection);
+        });
+        //
+        websocketConnection.on("aborted", (client: AvandaWebSocket) => {
+          this.abortConnection(websocketConnection);
+        });
+
+        try {
+          await Client.add(client);
+
+          console.log(">> new connection", {
+            clientId,
+            CLIENTS: await Client.count(),
+          });
+        } catch (e) {
+          // the client is still tracked locally, only the shared registry missed it
+          console.error("[avanda/http] websocket registry update failed:", e);
+        }
+
+        if (!streamable) this.sendResponseToClient(client);
       }
     );
     return websocketServer;
@@ -512,6 +710,11 @@ export default class Query {
 
   public listen() {
     if (!this.app) throw new Error("Execute before you listen");
+
+    // without Redis, websocket clients and events stay local to this instance
+    Redis.RedisClient.connect().catch((e) =>
+      console.error("Redis unavailable, websocket events are local only:", e)
+    );
 
     let ipAddress = ip.address("public");
 
@@ -527,48 +730,54 @@ export default class Query {
     return this.server;
   }
 
-  static bindFilters(model: Model, filters: Filters): Model {
-    let operators: {
-      [k: string]: (key: string, value: any, model: Model) => void;
-    };
-    operators = {
-      ">": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} > ${value}`);
-      },
-      "<": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} < ${value}`);
-      },
-      "==": (key: string, value: any, model: Model) => {
-        model.where({ [key]: value });
-      },
-      "=": (key: string, value: any, model: Model) => {
-        operators["=="](key, value, model);
-      },
-      "!=": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} != ${value}`);
-      },
-      NULL: (key: string, value: any, model: Model) => {
-        model.whereColIsNull<string>(key);
-      },
-      NOTNULL: (key: string, value: any, model: Model) => {
-        model.whereColIsNotNull<string>(key);
-      },
-      MATCHES: (key: string, value: any, model: Model) => {
-        model.whereColumns(key).matches(value);
-      },
-      LIKES: (key: string, value: any, model: Model) => {
-        model.where(key).like(`%${value}%`);
-      },
-      NOT: (key: string, value: any, model: Model) => {
-        model.where(key).notLike("%$value%");
-      },
-    };
-    for (let key in filters) {
-      let filter = filters[key];
-      let value = filter.vl ?? null;
-      let operator = filter.op;
+  // `ft` comes straight from the client. A column the controller hides must not
+  // be filterable either, or its value can be read back one comparison at a time.
+  static bindFilters(
+    model: Model,
+    filters: Filters,
+    rules: { exclude?: string[]; filterable?: string[] } = {}
+  ): Model {
+    if (!isPlainObject(filters)) throw new InvalidQueryError();
 
-      operators[operator](key, value, model);
+    // column names are case-insensitive in MySQL
+    const names = (columns?: string[]) =>
+      (columns ?? []).map((column) => String(column).trim().toLowerCase());
+    const hidden = names(rules?.exclude);
+    const allowed = rules?.filterable ? names(rules.filterable) : null;
+
+    const operators: { [k: string]: (value: any) => any } = {
+      ">": (value) => ({ [Op.gt]: value }),
+      "<": (value) => ({ [Op.lt]: value }),
+      "==": (value) => value,
+      "=": (value) => value,
+      "!=": (value) => ({ [Op.ne]: value }),
+      NULL: () => ({ [Op.is]: null }),
+      NOTNULL: () => ({ [Op.not]: null }),
+      LIKES: (value) => ({ [Op.like]: `%${value}%` }),
+      NOT: (value) => ({ [Op.notLike]: `%${value}%` }),
+      // accepted for older clients, never implemented
+      MATCHES: () => undefined,
+    };
+
+    for (const key of Object.keys(filters)) {
+      const filter = filters[key];
+      const column = key.toLowerCase();
+      const value = filter?.vl ?? null;
+
+      if (
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ||
+        hidden.includes(column) ||
+        (allowed && !allowed.includes(column)) ||
+        !isPlainObject(filter) ||
+        typeof filter.op != "string" ||
+        !Object.prototype.hasOwnProperty.call(operators, filter.op) ||
+        (value !== null &&
+          !["string", "number", "boolean"].includes(typeof value))
+      )
+        throw new InvalidQueryError();
+
+      const clause = operators[filter.op](value);
+      if (clause !== undefined) model.where({ [key]: clause } as any);
     }
 
     return model;

@@ -3,6 +3,7 @@ import Query from "./graph/query";
 import AvandaWebSocket from "./types/AvandaWebSocket";
 import Request from "./request";
 import Datum from "./types/Datum";
+import StreamSocket from "./socket";
 
 export default class Response {
   statusCode: number = 0;
@@ -17,6 +18,8 @@ export default class Response {
   message?: string;
   model?: Model;
   wsCLient?: AvandaWebSocket;
+  // set on @Streamable methods
+  socket?: StreamSocket;
   fileBytes?: Buffer;
   streamPath?: string;
   mimeType?: string;

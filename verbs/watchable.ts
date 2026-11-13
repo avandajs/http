@@ -6,6 +6,8 @@ import Controller from "../graph/controller";
 import "reflect-metadata";
 import { Model } from "@avanda/orm";
 import Event, { Broadcastable } from "../graph/event";
+import { clientErrorResponse, logRenderError } from "../errors";
+import { expose } from "./exposed";
 
 export default function (props: WatchableProps): any {
   props.immediate =
@@ -18,6 +20,7 @@ export default function (props: WatchableProps): any {
   ) {
 
     // target.watched[''];
+    expose(target, propertyKey);
 
     // descriptor.
     const originalMethod = descriptor.value;
@@ -34,6 +37,14 @@ export default function (props: WatchableProps): any {
       Reflect.getOwnMetadata(watchedMetadataKey, target, key) || false;
 
       if (!request.executeWatchable || hasStartedWatch) {
+        // a plain call (HTTP, a graph frame, an event delivery) is guarded like the subscription is
+        const denied = await validate(
+          props.middlewares,
+          response,
+          request,
+          model
+        );
+        if (denied) return denied;
         return await originalMethod.apply(this, args);
       }
 
@@ -62,19 +73,34 @@ export default function (props: WatchableProps): any {
 
           if (!eventPath) return null;
 
+          // runs as an event listener and from timers, where nothing awaits it,
+          // so it must never reject
           const eventCallback =  async (payload) => {
-            payload =
-              typeof payload == "string" ? JSON.parse(payload) : payload;
-            request.setPayload(payload);
-            let resp = await request.generateResponseFromGraph(false);
-            response.sendResponseAsWsMessage(resp);
+            try {
+              payload =
+                typeof payload == "string" ? JSON.parse(payload) : payload;
+              request.setPayload(payload);
+              let resp = await request.generateResponseFromGraph(false);
+              response.sendResponseAsWsMessage(resp);
+            } catch (e) {
+              logRenderError(`watch event ${eventPath}`, e);
+              try {
+                response.sendResponseAsWsMessage(clientErrorResponse(e));
+              } catch (sendError) {
+                console.error("[avanda/http] websocket send failed:", sendError);
+              }
+            }
           }
 
-          request.onClosedCallback = () => {
-            Event.remove(eventPath);
+          const previousClose = request.onClosedCallback;
+          request.onClosedCallback = async () => {
+            await previousClose?.();
+            await Event.remove(eventPath, eventCallback);
           };
 
-          Event.on(eventPath, eventCallback);
+          Event.on(eventPath, eventCallback).catch((e) =>
+            console.error(`[avanda/http] could not listen to ${eventPath}:`, e)
+          );
 
           // send default payload to client if exist
           if (defaultPayload) {
