@@ -55,10 +55,10 @@ class Client {
         return total;
     }
 }
+exports.default = Client;
 // sockets can't be shared across instances, only their ids are kept in Redis
 Client.activeClients = [];
 Client.instanceId = (0, uuid_1.v4)();
 Client.instancesKey = "avanda:ws:instances";
 // a crashed instance stops refreshing, so its clients drop out of the count
 Client.ttlSeconds = 30;
-exports.default = Client;

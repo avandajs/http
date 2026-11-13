@@ -1,6 +1,7 @@
 import { DataOf, Model } from "@avanda/orm";
 import { Redis } from "@avanda/app";
 import EventEmitter from "events";
+import { createHash, timingSafeEqual } from "crypto";
 import Request from "../request";
 import Query from "./query";
 
@@ -27,6 +28,22 @@ export default class Event {
 
   static setRemoteEventServiceUrl(url: string) {
     Event.remoteEventServiceUrl = url;
+  }
+
+  // The event route lets a caller push any payload to every watcher, so it only
+  // answers callers that send AVANDA_EVENT_SECRET in this header. With no secret
+  // configured the route refuses everyone.
+  static secretHeader: string = "x-avanda-event-secret";
+
+  static get secret(): string | null {
+    return process.env.AVANDA_EVENT_SECRET || null;
+  }
+
+  static isAuthorized(provided: unknown): boolean {
+    const secret = Event.secret;
+    if (!secret || typeof provided != "string") return false;
+    const digest = (value: string) => createHash("sha256").update(value).digest();
+    return timingSafeEqual(digest(provided), digest(secret));
   }
 
   // a connection in subscriber mode can't run other commands, so it's kept apart from RedisClient.instance
@@ -62,10 +79,20 @@ export default class Event {
     if (Event.remoteEventServiceUrl) {
       try {
         let uri = Event.remoteEventServiceUrl + Query.eventPath;
-        let res = await new Request().post(uri, {
-          payload: JSON.stringify(payload),
-          event,
-        });
+        if (!Event.secret)
+          console.error(
+            "[avanda/http] AVANDA_EVENT_SECRET is not set, the remote event service will refuse this event"
+          );
+        let res = await new Request()
+          .setHeaders({ [Event.secretHeader]: Event.secret ?? "" })
+          .post(uri, {
+            payload: JSON.stringify(payload),
+            event,
+          });
+        if (res.statusCode !== 200)
+          console.error(
+            `[avanda/http] remote event service answered ${res.statusCode} for ${event}`
+          );
       } catch (e) {
         console.log({ e });
       }
@@ -82,8 +109,15 @@ export default class Event {
 
     const subscriber = await Event.getSubscriber();
     if (subscriber && isFirstListener) {
+      // runs inside the Redis client, where a throw would take the process down
       await subscriber.subscribe(Event.channel(event), (message) => {
-        Event.EventEmitter.emit(event, ...JSON.parse(message));
+        try {
+          const payload = JSON.parse(message);
+          if (!Array.isArray(payload)) throw new Error("payload is not an array");
+          Event.EventEmitter.emit(event, ...payload);
+        } catch (e) {
+          console.error(`[avanda/http] dropped a malformed ${event} event:`, e);
+        }
       });
     }
   }

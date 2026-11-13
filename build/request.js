@@ -13,17 +13,9 @@ const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
 const dns_1 = __importDefault(require("dns"));
 const errors_1 = require("./errors");
+const exposed_1 = require("./verbs/exposed");
 dns_1.default.setDefaultResultOrder("ipv4first");
 const hasOwn = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
-// true when `key` is defined by the controller or one of its base classes,
-// and not merely inherited from Object.prototype
-function definesOwnMember(controller, key) {
-    for (let target = controller; target && target !== Object.prototype; target = Object.getPrototypeOf(target)) {
-        if (hasOwn(target, key))
-            return true;
-    }
-    return false;
-}
 const axiosInstance = axios_1.default.create({
     httpAgent: new http_1.default.Agent({
         keepAlive: true,
@@ -227,7 +219,7 @@ class Request {
             }
             if (service.ft) {
                 //apply filters
-                model = query_1.default.bindFilters(model, service.ft);
+                model = query_1.default.bindFilters(model, service.ft, controller);
             }
         }
         // if (cacheResponse && cache_key && this.caches.hasOwnProperty(cache_key)) {
@@ -240,9 +232,9 @@ class Request {
         this.model = model;
         response.model = model;
         response.wsCLient = wsClient;
+        // only methods a verb, @Watchable or @Streamable decorator registered
         if (typeof fnc != "string" ||
-            fnc === "constructor" ||
-            !definesOwnMember(controller, fnc) ||
+            !(0, exposed_1.isExposed)(controller, fnc) ||
             typeof controller[fnc] != "function")
             throw new errors_1.ServiceNotFoundError(`function ${JSON.stringify(fnc)} does not exist in ${serviceName}`);
         let fncResponse = await controller[fnc](response, this, controller.model);
