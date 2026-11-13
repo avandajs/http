@@ -33,6 +33,7 @@ const cors_1 = __importDefault(require("cors"));
 const http = __importStar(require("http"));
 const path_1 = __importDefault(require("path"));
 const index_1 = require("../index");
+const sequelize_1 = require("sequelize");
 const lodash_1 = require("lodash");
 const app_1 = require("@avanda/app");
 const ws_1 = __importDefault(require("ws"));
@@ -63,7 +64,6 @@ class Query {
         this.watcherIntervalInstance = null;
         this.httpPath = "/graph";
         this.websocketPath = "/watch";
-        this.corsRejected = true;
         this.models = {};
         this.controllers = {};
         this.serverConfig = serverConfig;
@@ -86,10 +86,30 @@ class Query {
                 !label.includes("."));
         });
     }
+    // A request without an Origin header isn't a cross-site browser request.
+    // One with an Origin must be whitelisted, or be the server's own origin.
+    isRequestAllowed(origin, host) {
+        if (!origin || this.serverConfig.disableCORS)
+            return true;
+        if (this.isOriginAllowed(origin))
+            return true;
+        return !!host && origin.split("://")[1] === host;
+    }
     execute(models, controllers, eventDriver) {
         this.models = models;
         this.controllers = controllers;
         event_1.default.setDriver(eventDriver);
+        // before anything is parsed or run, and on every route
+        this.app.use((req, res, next) => {
+            if (this.isRequestAllowed(req.headers.origin, req.headers.host))
+                return next();
+            res.status(403).json({
+                msg: "CORS Rejected",
+                data: null,
+                status_code: 403,
+                total_pages: 0,
+            });
+        });
         this.app.use(bodyParser.json({
             verify: (req, res, buf) => {
                 req.rawBody = buf; // Store raw body buffer for signature verification
@@ -99,16 +119,8 @@ class Query {
         this.app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
         this.app.use((0, cors_1.default)({
             credentials: true,
-            origin: (origin, callback) => {
-                if (!origin || this.isOriginAllowed(origin)) {
-                    this.corsRejected = false;
-                    callback(null, true);
-                }
-                else {
-                    this.corsRejected = true;
-                    callback(null, true);
-                }
-            },
+            // CORS headers only go to origins that pass; the others were already refused above
+            origin: (origin, callback) => callback(null, this.isRequestAllowed(origin)),
         }));
         this.app.use((0, express_fileupload_1.default)({
             useTempFiles: true,
@@ -121,8 +133,17 @@ class Query {
         }));
         this.app.post(Query.eventPath, async (req, res) => {
             var _a;
+            // only another service holding the shared secret may emit here
+            if (!event_1.default.isAuthorized(req.headers[event_1.default.secretHeader])) {
+                const response = new index_1.Response();
+                response.statusCode = 403;
+                response.message = "Forbidden";
+                response.data = null;
+                res.status(403).json(Query.responseToObject(response));
+                return;
+            }
             let { payload, event } = (_a = req.body) !== null && _a !== void 0 ? _a : {};
-            if (!payload || !event) {
+            if (!payload || !event || typeof event != "string") {
                 const response = new index_1.Response();
                 response.statusCode = 400;
                 response.message = "payload and event are required";
@@ -132,6 +153,10 @@ class Query {
             }
             try {
                 payload = JSON.parse(payload);
+                if (!Array.isArray(payload)) {
+                    res.status(400).json({ error: "payload must be a JSON array" });
+                    return;
+                }
                 await event_1.default.emitEvent(event, payload);
                 res.json({ event, status: "emitted" });
             }
@@ -160,16 +185,7 @@ class Query {
         // /users/:userId/books/:bookId
         this.app.all(this.httpPath, async (req, res) => {
             let query = req.query.query;
-            if (this.corsRejected && !this.serverConfig.disableCORS) {
-                res.json({
-                    msg: "CORS Rejected",
-                    data: null,
-                    status: 500,
-                    total_pages: 0,
-                });
-                return;
-            }
-            else if (query) {
+            if (query) {
                 try {
                     let service = Query.parseService(query);
                     await this.renderServiceFromQuery(req, res, service);
@@ -478,6 +494,11 @@ class Query {
             path,
         });
         express.on("upgrade", (request, socket, head) => {
+            // browsers send Origin on every websocket handshake and never ask CORS first
+            if (!this.isRequestAllowed(request.headers.origin, request.headers.host)) {
+                socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+                return;
+            }
             websocketServer.handleUpgrade(request, socket, head, (websocket) => {
                 websocketServer.emit("connection", websocket, request);
             });
@@ -592,49 +613,48 @@ class Query {
         });
         return this.server;
     }
-    static bindFilters(model, filters) {
+    // `ft` comes straight from the client. A column the controller hides must not
+    // be filterable either, or its value can be read back one comparison at a time.
+    static bindFilters(model, filters, rules = {}) {
         var _a;
-        let operators;
-        operators = {
-            ">": (key, value, model) => {
-                model.whereRaw(`${key} > ${value}`);
-            },
-            "<": (key, value, model) => {
-                model.whereRaw(`${key} < ${value}`);
-            },
-            "==": (key, value, model) => {
-                model.where({ [key]: value });
-            },
-            "=": (key, value, model) => {
-                operators["=="](key, value, model);
-            },
-            "!=": (key, value, model) => {
-                model.whereRaw(`${key} != ${value}`);
-            },
-            NULL: (key, value, model) => {
-                model.whereColIsNull(key);
-            },
-            NOTNULL: (key, value, model) => {
-                model.whereColIsNotNull(key);
-            },
-            MATCHES: (key, value, model) => {
-                model.whereColumns(key).matches(value);
-            },
-            LIKES: (key, value, model) => {
-                model.where(key).like(`%${value}%`);
-            },
-            NOT: (key, value, model) => {
-                model.where(key).notLike("%$value%");
-            },
+        if (!(0, lodash_1.isPlainObject)(filters))
+            throw new errors_1.InvalidQueryError();
+        // column names are case-insensitive in MySQL
+        const names = (columns) => (columns !== null && columns !== void 0 ? columns : []).map((column) => String(column).trim().toLowerCase());
+        const hidden = names(rules === null || rules === void 0 ? void 0 : rules.exclude);
+        const allowed = (rules === null || rules === void 0 ? void 0 : rules.filterable) ? names(rules.filterable) : null;
+        const operators = {
+            ">": (value) => ({ [sequelize_1.Op.gt]: value }),
+            "<": (value) => ({ [sequelize_1.Op.lt]: value }),
+            "==": (value) => value,
+            "=": (value) => value,
+            "!=": (value) => ({ [sequelize_1.Op.ne]: value }),
+            NULL: () => ({ [sequelize_1.Op.is]: null }),
+            NOTNULL: () => ({ [sequelize_1.Op.not]: null }),
+            LIKES: (value) => ({ [sequelize_1.Op.like]: `%${value}%` }),
+            NOT: (value) => ({ [sequelize_1.Op.notLike]: `%${value}%` }),
+            // accepted for older clients, never implemented
+            MATCHES: () => undefined,
         };
-        for (let key in filters) {
-            let filter = filters[key];
-            let value = (_a = filter.vl) !== null && _a !== void 0 ? _a : null;
-            let operator = filter.op;
-            operators[operator](key, value, model);
+        for (const key of Object.keys(filters)) {
+            const filter = filters[key];
+            const column = key.toLowerCase();
+            const value = (_a = filter === null || filter === void 0 ? void 0 : filter.vl) !== null && _a !== void 0 ? _a : null;
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ||
+                hidden.includes(column) ||
+                (allowed && !allowed.includes(column)) ||
+                !(0, lodash_1.isPlainObject)(filter) ||
+                typeof filter.op != "string" ||
+                !Object.prototype.hasOwnProperty.call(operators, filter.op) ||
+                (value !== null &&
+                    !["string", "number", "boolean"].includes(typeof value)))
+                throw new errors_1.InvalidQueryError();
+            const clause = operators[filter.op](value);
+            if (clause !== undefined)
+                model.where({ [key]: clause });
         }
         return model;
     }
 }
-Query.eventPath = "/event";
 exports.default = Query;
+Query.eventPath = "/event";

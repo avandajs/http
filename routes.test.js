@@ -1,7 +1,21 @@
 const { test, before, after, afterEach } = require("node:test");
 const assert = require("node:assert");
 const WebSocket = require("ws");
-const { Controller, Query, Event, Watchable, Streamable } = require("./build");
+const {
+  Controller,
+  Query,
+  Event,
+  Get,
+  Watchable,
+  Streamable,
+} = require("./build");
+
+// the event route only answers callers that hold this
+process.env.AVANDA_EVENT_SECRET = "routes-test-secret";
+const eventHeaders = {
+  "content-type": "application/json",
+  "x-avanda-event-secret": process.env.AVANDA_EVENT_SECRET,
+};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -52,6 +66,21 @@ class Thing extends Base {
     if (payload?.boom) throw new Error(SECRET);
     return payload;
   }
+}
+
+// only decorated methods are endpoints
+for (const [target, name] of [
+  [Base, "ping"],
+  [Thing, "hello"],
+  [Thing, "boom"],
+  [Thing, "direct"],
+]) {
+  const descriptor = Object.getOwnPropertyDescriptor(target.prototype, name);
+  Object.defineProperty(
+    target.prototype,
+    name,
+    Get()(target.prototype, name, descriptor)
+  );
 }
 
 const feed = Object.getOwnPropertyDescriptor(Thing.prototype, "feed");
@@ -262,7 +291,7 @@ test("event route answers 400 when payload or event is missing", async () => {
   for (const body of [{}, { event: "x" }, { payload: "[1]" }]) {
     const r = await fetch(`${origin}/event`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: eventHeaders,
       body: JSON.stringify(body),
     });
     assert.strictEqual(r.status, 400, JSON.stringify(body));
@@ -273,7 +302,7 @@ test("event route answers 400 when payload or event is missing", async () => {
 test("event route answers a payload it cannot emit instead of rejecting", async () => {
   const r = await fetch(`${origin}/event`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: eventHeaders,
     // parses to a number, which can't be spread into listener arguments
     body: JSON.stringify({ event: "x", payload: "1" }),
   });
@@ -327,6 +356,7 @@ test("websocket: graph frames answer a throwing controller with a generic 500", 
   console.error = () => {};
   const ws = connect({ n: "Thing", f: "boom" });
   try {
+    // one frame for the connect itself, one for the frame sent afterwards
     // graph frames aren't answered in order, so wait for each reply
     await waitFor(() => ws.frames.length === 1);
     ws.send(JSON.stringify({ a: 1 }));

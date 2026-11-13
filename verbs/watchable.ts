@@ -7,6 +7,7 @@ import "reflect-metadata";
 import { Model } from "@avanda/orm";
 import Event, { Broadcastable } from "../graph/event";
 import { clientErrorResponse, logRenderError } from "../errors";
+import { expose } from "./exposed";
 
 export default function (props: WatchableProps): any {
   props.immediate =
@@ -19,6 +20,7 @@ export default function (props: WatchableProps): any {
   ) {
 
     // target.watched[''];
+    expose(target, propertyKey);
 
     // descriptor.
     const originalMethod = descriptor.value;
@@ -35,6 +37,14 @@ export default function (props: WatchableProps): any {
       Reflect.getOwnMetadata(watchedMetadataKey, target, key) || false;
 
       if (!request.executeWatchable || hasStartedWatch) {
+        // a plain call (HTTP, a graph frame, an event delivery) is guarded like the subscription is
+        const denied = await validate(
+          props.middlewares,
+          response,
+          request,
+          model
+        );
+        if (denied) return denied;
         return await originalMethod.apply(this, args);
       }
 

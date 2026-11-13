@@ -3,6 +3,7 @@ import Request from "../request";
 import Response from "../response";
 import validate from "../middleware/validate";
 import { Model } from "@avanda/orm";
+import { expose } from "./exposed";
 
 export default function (middlewares: Middleware[], method: string) {
   return function (
@@ -10,6 +11,8 @@ export default function (middlewares: Middleware[], method: string) {
     propertyKey: string,
     descriptor: PropertyDescriptor
   ) {
+    expose(target, propertyKey);
+
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (...args: any) {
@@ -19,7 +22,8 @@ export default function (middlewares: Middleware[], method: string) {
       let requestMethod = request?.method?.toLowerCase();
       if (requestMethod === "head") requestMethod = "get";
 
-      if (requestMethod !== method && !request.isWatcher) {
+      // a websocket connect counts as GET, so it can't reach other verbs
+      if (requestMethod !== method) {
         //invalid request
         return function (...args: any) {
           return response.error(`Bad request type, ${request?.method}`, 500);

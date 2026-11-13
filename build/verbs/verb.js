@@ -4,8 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const validate_1 = __importDefault(require("../middleware/validate"));
+const exposed_1 = require("./exposed");
 function default_1(middlewares, method) {
     return function (target, propertyKey, descriptor) {
+        (0, exposed_1.expose)(target, propertyKey);
         const originalMethod = descriptor.value;
         descriptor.value = async function (...args) {
             var _a, _b;
@@ -15,7 +17,8 @@ function default_1(middlewares, method) {
             let requestMethod = (_a = request === null || request === void 0 ? void 0 : request.method) === null || _a === void 0 ? void 0 : _a.toLowerCase();
             if (requestMethod === "head")
                 requestMethod = "get";
-            if (requestMethod !== method && !request.isWatcher) {
+            // a websocket connect counts as GET, so it can't reach other verbs
+            if (requestMethod !== method) {
                 //invalid request
                 return function (...args) {
                     return response.error(`Bad request type, ${request === null || request === void 0 ? void 0 : request.method}`, 500);
