@@ -16,7 +16,24 @@ import Query from "./graph/query";
 import { isPlainObject, omit, snakeCase } from "lodash";
 import cache from "global-cache";
 import dns from "dns";
+import { ServiceNotFoundError } from "./errors";
 dns.setDefaultResultOrder("ipv4first");
+
+const hasOwn = (target: any, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(target, key);
+
+// true when `key` is defined by the controller or one of its base classes,
+// and not merely inherited from Object.prototype
+function definesOwnMember(controller: any, key: string): boolean {
+  for (
+    let target = controller;
+    target && target !== Object.prototype;
+    target = Object.getPrototypeOf(target)
+  ) {
+    if (hasOwn(target, key)) return true;
+  }
+  return false;
+}
 
 const axiosInstance = axios.create({
   httpAgent: new http.Agent({
@@ -318,8 +335,15 @@ export default class Request {
     response.model = model;
     response.wsCLient = wsClient;
 
-    if (typeof controller[fnc] != "function")
-      throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`);
+    if (
+      typeof fnc != "string" ||
+      fnc === "constructor" ||
+      !definesOwnMember(controller, fnc) ||
+      typeof controller[fnc] != "function"
+    )
+      throw new ServiceNotFoundError(
+        `function ${JSON.stringify(fnc)} does not exist in ${serviceName}`
+      );
 
     let fncResponse = await controller[fnc](response, this, controller.model);
     // if (cacheResponse && cache_key) {
@@ -347,8 +371,14 @@ export default class Request {
     let children = service.c;
 
     let data: Datum<any> | null = null;
-    if (!(name in this.controllers)) {
-      throw new Error("Invalid controller name: " + name);
+    if (
+      typeof name != "string" ||
+      !this.controllers ||
+      !hasOwn(this.controllers, name)
+    ) {
+      throw new ServiceNotFoundError(
+        "invalid controller name: " + JSON.stringify(name)
+      );
     }
 
     let controller = _controller ?? (await this.getController(service));

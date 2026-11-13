@@ -15,7 +15,7 @@
   "private": false,
   "scripts": {
     "dev": "tsc --watch",
-    "test": "node --test stream.test.js socket.test.js"
+    "test": "node --test stream.test.js socket.test.js routes.test.js"
   },
   "publishConfig": {
     "access": "public"

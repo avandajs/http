@@ -33,6 +33,7 @@ const cors_1 = __importDefault(require("cors"));
 const http = __importStar(require("http"));
 const path_1 = __importDefault(require("path"));
 const index_1 = require("../index");
+const lodash_1 = require("lodash");
 const app_1 = require("@avanda/app");
 const ws_1 = __importDefault(require("ws"));
 const query_string_1 = __importDefault(require("query-string"));
@@ -44,6 +45,7 @@ const clients_1 = __importDefault(require("./clients"));
 const event_1 = __importDefault(require("./event"));
 const socket_1 = __importDefault(require("../socket"));
 const streamable_1 = require("../verbs/streamable");
+const errors_1 = require("../errors");
 // let CLIENTS: WebSocketClient[] = [];
 /*
  *
@@ -118,12 +120,19 @@ class Query {
             },
         }));
         this.app.post(Query.eventPath, async (req, res) => {
-            let { payload, event } = req.body;
-            if (!payload || !event)
+            var _a;
+            let { payload, event } = (_a = req.body) !== null && _a !== void 0 ? _a : {};
+            if (!payload || !event) {
+                const response = new index_1.Response();
+                response.statusCode = 400;
+                response.message = "payload and event are required";
+                response.data = null;
+                res.status(400).json(Query.responseToObject(response));
                 return;
+            }
             try {
                 payload = JSON.parse(payload);
-                event_1.default.emitEvent(event, payload);
+                await event_1.default.emitEvent(event, payload);
                 res.json({ event, status: "emitted" });
             }
             catch (e) {
@@ -140,7 +149,12 @@ class Query {
                 al: true,
                 c: ["*"],
             };
-            this.renderServiceFromQuery(req, res, service);
+            try {
+                await this.renderServiceFromQuery(req, res, service);
+            }
+            catch (e) {
+                this.sendRenderError(req, res, e);
+            }
             return;
         });
         // /users/:userId/books/:bookId
@@ -156,8 +170,13 @@ class Query {
                 return;
             }
             else if (query) {
-                let service = JSON.parse(query);
-                this.renderServiceFromQuery(req, res, service);
+                try {
+                    let service = Query.parseService(query);
+                    await this.renderServiceFromQuery(req, res, service);
+                }
+                catch (e) {
+                    this.sendRenderError(req, res, e);
+                }
                 return;
             }
             res.send(`<!DOCTYPE html>
@@ -237,6 +256,37 @@ class Query {
         this.startWebSocket(this.server, this.websocketPath);
         return this;
     }
+    // malformed JSON, or JSON that isn't an object, is the client's mistake: 400
+    static parseService(query) {
+        let service;
+        try {
+            service = JSON.parse(query);
+        }
+        catch (e) {
+            throw new errors_1.InvalidQueryError();
+        }
+        if (!(0, lodash_1.isPlainObject)(service))
+            throw new errors_1.InvalidQueryError();
+        return service;
+    }
+    // a websocket text frame that isn't JSON is the client's mistake: 400
+    static parseFrame(frame) {
+        try {
+            return JSON.parse(frame);
+        }
+        catch (e) {
+            throw new errors_1.InvalidFrameError();
+        }
+    }
+    // the real error is logged here and never leaves the server
+    sendRenderError(req, res, e) {
+        (0, errors_1.logRenderError)(`${req.method} ${req.path}`, e);
+        // a controller may already have responded through expressRes
+        if (res.headersSent)
+            return;
+        const response = (0, errors_1.clientErrorResponse)(e);
+        res.status(response.statusCode).json(Query.responseToObject(response));
+    }
     async renderServiceFromQuery(req, res, service) {
         if (app_1.Env.get("NODE_ENV") == "development") {
             console.info("[Request]: " + req.method + "/ " + req.url);
@@ -258,6 +308,9 @@ class Query {
         if (service) {
             let response = await request.generateResponseFromGraph(false);
             request.data = response;
+            // the controller answered through expressRes itself, nothing left to write
+            if (res.headersSent)
+                return;
             res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token, Origin, Authorization");
             if (response.statusCode) {
                 res.status(parseInt(response.statusCode));
@@ -327,8 +380,31 @@ class Query {
             return;
         }
         client.busy = true;
-        await client.request.generateResponseFromGraph(true, client.service, true, undefined, undefined, undefined, "watcher", client.client);
-        client.busy = false;
+        try {
+            await client.request.generateResponseFromGraph(true, client.service, true, undefined, undefined, undefined, "watcher", client.client);
+        }
+        catch (e) {
+            (0, errors_1.logRenderError)(`watch ${client.id}`, e);
+            Query.sendToSocket(client.client, (0, errors_1.clientErrorResponse)(e));
+        }
+        finally {
+            client.busy = false;
+        }
+    }
+    // never throws: a socket that went away or a response that can't be serialised is only logged
+    static sendToSocket(connection, response) {
+        try {
+            if (connection.readyState !== ws_1.default.OPEN)
+                return;
+            connection.send(JSON.stringify(Query.responseToObject(response)));
+        }
+        catch (e) {
+            console.error("[avanda/http] websocket send failed:", e);
+        }
+    }
+    // close/end/aborted listeners can't await, so a failed cleanup is logged here
+    abortConnection(websocketConnection, code) {
+        this.handleConnectionAbortion(websocketConnection, code).catch((e) => console.error("[avanda/http] websocket cleanup failed:", e));
     }
     // frames are handed over one at a time, each waiting for the previous handler to settle
     serveStream(client, props) {
@@ -339,8 +415,8 @@ class Query {
         let queue = client.request
             .generateResponseFromGraph(false, client.service, true, undefined, undefined, undefined, "watcher", connection)
             .catch((e) => {
-            var _a;
-            socket.send(new index_1.Response().error((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : "Stream failed"));
+            (0, errors_1.logRenderError)(`stream ${client.id}`, e);
+            socket.send((0, errors_1.clientErrorResponse)(e));
             socket.close(1011, "Stream failed");
             return null;
         });
@@ -352,15 +428,16 @@ class Query {
                 return;
             }
             queue = queue.then(async (handlers) => {
-                var _a, _b, _c;
+                var _a, _b;
                 try {
                     if (isBinary)
                         await ((_a = handlers === null || handlers === void 0 ? void 0 : handlers.onBinary) === null || _a === void 0 ? void 0 : _a.call(handlers, message));
                     else
-                        await ((_b = handlers === null || handlers === void 0 ? void 0 : handlers.onMessage) === null || _b === void 0 ? void 0 : _b.call(handlers, JSON.parse(message.toString())));
+                        await ((_b = handlers === null || handlers === void 0 ? void 0 : handlers.onMessage) === null || _b === void 0 ? void 0 : _b.call(handlers, Query.parseFrame(message.toString())));
                 }
                 catch (e) {
-                    socket.send(new index_1.Response().error((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : "Invalid frame"));
+                    (0, errors_1.logRenderError)(`stream frame ${client.id}`, e);
+                    socket.send((0, errors_1.clientErrorResponse)(e));
                 }
                 return handlers;
             });
@@ -418,7 +495,7 @@ class Query {
                 request.body = connectionParams.data
                     ? JSON.parse(connectionParams.data)
                     : undefined;
-                service = JSON.parse(connectionParams.query);
+                service = Query.parseService(connectionParams.query);
             }
             catch (e) {
                 websocketConnection.close(1007, "Invalid query or data");
@@ -428,7 +505,11 @@ class Query {
             request.statusCode = connectionRequest.statusCode;
             request.statusMessage = connectionRequest.statusMessage;
             request.requestId = clientId;
-            const controller = this.controllers[service === null || service === void 0 ? void 0 : service.n];
+            // own keys only: "__proto__" or "constructor" must not resolve to a controller
+            const controller = typeof service.n == "string" &&
+                Object.prototype.hasOwnProperty.call(this.controllers, service.n)
+                ? this.controllers[service.n]
+                : undefined;
             const streamable = controller &&
                 Reflect.getMetadata(streamable_1.streamableMetadataKey, controller.prototype, (_a = service.f) !== null && _a !== void 0 ? _a : "get");
             websocketConnection.clientId = clientId; //
@@ -457,37 +538,40 @@ class Query {
             }
             else {
                 websocketConnection.on("message", async (message) => {
-                    var _a;
                     // console.log(">>>New message to: "+ websocketConnection.clientId + ">>>> " + message)
                     let res;
                     try {
-                        request.body = message
-                            ? JSON.parse(message)
-                            : {};
+                        request.body = message ? Query.parseFrame(message) : {};
                         res = await avandaRequest.generateResponseFromGraph(false);
                     }
                     catch (e) {
-                        res = new index_1.Response().error((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : "Invalid frame");
+                        (0, errors_1.logRenderError)(`frame ${clientId}`, e);
+                        res = (0, errors_1.clientErrorResponse)(e);
                     }
-                    let obj = Query.responseToObject(res);
-                    websocketConnection.send(JSON.stringify(obj));
+                    Query.sendToSocket(websocketConnection, res);
                 });
             }
             websocketConnection.on("close", (code) => {
-                this.handleConnectionAbortion(websocketConnection, code);
+                this.abortConnection(websocketConnection, code);
             });
             websocketConnection.on("end", (client) => {
-                this.handleConnectionAbortion(websocketConnection);
+                this.abortConnection(websocketConnection);
             });
             //
             websocketConnection.on("aborted", (client) => {
-                this.handleConnectionAbortion(websocketConnection);
+                this.abortConnection(websocketConnection);
             });
-            await clients_1.default.add(client);
-            console.log(">> new connection", {
-                clientId,
-                CLIENTS: await clients_1.default.count(),
-            });
+            try {
+                await clients_1.default.add(client);
+                console.log(">> new connection", {
+                    clientId,
+                    CLIENTS: await clients_1.default.count(),
+                });
+            }
+            catch (e) {
+                // the client is still tracked locally, only the shared registry missed it
+                console.error("[avanda/http] websocket registry update failed:", e);
+            }
             if (!streamable)
                 this.sendResponseToClient(client);
         });

@@ -189,8 +189,10 @@ test("bad JSON and a throwing handler get error frames and the socket survives",
   await waitFor(() => ws.frames.length === 4);
   const [, badJson, boom, done] = ws.frames;
   assert.strictEqual(badJson.status_code, 400);
-  assert.match(badJson.msg, /JSON/);
-  assert.strictEqual(boom.msg, "boom");
+  assert.strictEqual(badJson.msg, "Invalid frame");
+  // what a handler throws is logged server-side, never sent to the client
+  assert.strictEqual(boom.status_code, 500);
+  assert.strictEqual(boom.msg, "Internal server error");
   assert.deepStrictEqual(done.data.order, []);
   ws.close();
 });

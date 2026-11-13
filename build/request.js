@@ -12,7 +12,18 @@ const orm_1 = require("@avanda/orm");
 const query_1 = __importDefault(require("./graph/query"));
 const lodash_1 = require("lodash");
 const dns_1 = __importDefault(require("dns"));
+const errors_1 = require("./errors");
 dns_1.default.setDefaultResultOrder("ipv4first");
+const hasOwn = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
+// true when `key` is defined by the controller or one of its base classes,
+// and not merely inherited from Object.prototype
+function definesOwnMember(controller, key) {
+    for (let target = controller; target && target !== Object.prototype; target = Object.getPrototypeOf(target)) {
+        if (hasOwn(target, key))
+            return true;
+    }
+    return false;
+}
 const axiosInstance = axios_1.default.create({
     httpAgent: new http_1.default.Agent({
         keepAlive: true,
@@ -229,8 +240,11 @@ class Request {
         this.model = model;
         response.model = model;
         response.wsCLient = wsClient;
-        if (typeof controller[fnc] != "function")
-            throw new Error(`function \`${fnc}\` does not exist in ${serviceName}`);
+        if (typeof fnc != "string" ||
+            fnc === "constructor" ||
+            !definesOwnMember(controller, fnc) ||
+            typeof controller[fnc] != "function")
+            throw new errors_1.ServiceNotFoundError(`function ${JSON.stringify(fnc)} does not exist in ${serviceName}`);
         let fncResponse = await controller[fnc](response, this, controller.model);
         // if (cacheResponse && cache_key) {
         //   this.caches[cache_key] = fncResponse;
@@ -246,8 +260,10 @@ class Request {
         let type = service.t;
         let children = service.c;
         let data = null;
-        if (!(name in this.controllers)) {
-            throw new Error("Invalid controller name: " + name);
+        if (typeof name != "string" ||
+            !this.controllers ||
+            !hasOwn(this.controllers, name)) {
+            throw new errors_1.ServiceNotFoundError("invalid controller name: " + JSON.stringify(name));
         }
         let controller = _controller !== null && _controller !== void 0 ? _controller : (await this.getController(service));
         let toExclude = controller === null || controller === void 0 ? void 0 : controller.exclude;

@@ -29,6 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const validate_1 = __importDefault(require("../middleware/validate"));
 require("reflect-metadata");
 const event_1 = __importStar(require("../graph/event"));
+const errors_1 = require("../errors");
 function default_1(props) {
     props.immediate =
         typeof props.immediate == "undefined" ? true : props.immediate;
@@ -61,19 +62,32 @@ function default_1(props) {
                     }
                     if (!eventPath)
                         return null;
+                    // runs as an event listener and from timers, where nothing awaits it,
+                    // so it must never reject
                     const eventCallback = async (payload) => {
-                        payload =
-                            typeof payload == "string" ? JSON.parse(payload) : payload;
-                        request.setPayload(payload);
-                        let resp = await request.generateResponseFromGraph(false);
-                        response.sendResponseAsWsMessage(resp);
+                        try {
+                            payload =
+                                typeof payload == "string" ? JSON.parse(payload) : payload;
+                            request.setPayload(payload);
+                            let resp = await request.generateResponseFromGraph(false);
+                            response.sendResponseAsWsMessage(resp);
+                        }
+                        catch (e) {
+                            (0, errors_1.logRenderError)(`watch event ${eventPath}`, e);
+                            try {
+                                response.sendResponseAsWsMessage((0, errors_1.clientErrorResponse)(e));
+                            }
+                            catch (sendError) {
+                                console.error("[avanda/http] websocket send failed:", sendError);
+                            }
+                        }
                     };
                     const previousClose = request.onClosedCallback;
                     request.onClosedCallback = async () => {
                         await (previousClose === null || previousClose === void 0 ? void 0 : previousClose());
                         await event_1.default.remove(eventPath, eventCallback);
                     };
-                    event_1.default.on(eventPath, eventCallback);
+                    event_1.default.on(eventPath, eventCallback).catch((e) => console.error(`[avanda/http] could not listen to ${eventPath}:`, e));
                     // send default payload to client if exist
                     if (defaultPayload) {
                         eventCallback(defaultPayload);
