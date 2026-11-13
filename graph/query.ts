@@ -6,7 +6,7 @@ import * as http from "http";
 import path from "path";
 import Controller from "./controller";
 import { Request, Response } from "../index";
-import { Sequelize } from "sequelize";
+import { Op, Sequelize } from "sequelize";
 import { Model } from "@avanda/orm";
 import Datum from "../types/Datum";
 import Service from "../types/Service";
@@ -56,7 +56,6 @@ export default class Query {
   websocketPath: string = "/watch";
 
   autoLink?: boolean;
-  corsRejected?: boolean = true;
   connection: Promise<Sequelize> | Sequelize;
   models: { [model: string]: any } = {};
   controllers: { [model: string]: typeof Controller } = {};
@@ -90,6 +89,14 @@ export default class Query {
     });
   }
 
+  // A request without an Origin header isn't a cross-site browser request.
+  // One with an Origin must be whitelisted, or be the server's own origin.
+  isRequestAllowed(origin?: string, host?: string): boolean {
+    if (!origin || this.serverConfig.disableCORS) return true;
+    if (this.isOriginAllowed(origin)) return true;
+    return !!host && origin.split("://")[1] === host;
+  }
+
   execute(
     models: { [k: string]: any },
     controllers: { [k: string]: any },
@@ -98,6 +105,18 @@ export default class Query {
     this.models = models;
     this.controllers = controllers;
     Event.setDriver(eventDriver);
+
+    // before anything is parsed or run, and on every route
+    this.app.use((req, res, next) => {
+      if (this.isRequestAllowed(req.headers.origin, req.headers.host))
+        return next();
+      res.status(403).json({
+        msg: "CORS Rejected",
+        data: null,
+        status_code: 403,
+        total_pages: 0,
+      });
+    });
 
     this.app.use(
       bodyParser.json({
@@ -112,15 +131,9 @@ export default class Query {
     this.app.use(
       cors({
         credentials: true,
-        origin: (origin, callback) => {
-          if (!origin || this.isOriginAllowed(origin)) {
-            this.corsRejected = false;
-            callback(null, true);
-          } else {
-            this.corsRejected = true;
-            callback(null, true);
-          }
-        },
+        // CORS headers only go to origins that pass; the others were already refused above
+        origin: (origin, callback) =>
+          callback(null, this.isRequestAllowed(origin)),
       })
     );
     this.app.use(
@@ -141,8 +154,18 @@ export default class Query {
     this.app.post(
       Query.eventPath,
       async (req: AvandaHttpRequest, res: express.Response) => {
+        // only another service holding the shared secret may emit here
+        if (!Event.isAuthorized(req.headers[Event.secretHeader])) {
+          const response = new Response();
+          response.statusCode = 403;
+          response.message = "Forbidden";
+          response.data = null;
+          res.status(403).json(Query.responseToObject(response));
+          return;
+        }
+
         let { payload, event } = req.body ?? {};
-        if (!payload || !event) {
+        if (!payload || !event || typeof event != "string") {
           const response = new Response();
           response.statusCode = 400;
           response.message = "payload and event are required";
@@ -153,6 +176,10 @@ export default class Query {
 
         try {
           payload = JSON.parse(payload);
+          if (!Array.isArray(payload)) {
+            res.status(400).json({ error: "payload must be a JSON array" });
+            return;
+          }
           await Event.emitEvent(event, payload);
           res.json({ event, status: "emitted" });
         } catch (e) {
@@ -189,15 +216,7 @@ export default class Query {
       async (req: AvandaHttpRequest, res: express.Response) => {
         let query = req.query.query;
 
-        if (this.corsRejected && !this.serverConfig.disableCORS) {
-          res.json({
-            msg: "CORS Rejected",
-            data: null,
-            status: 500,
-            total_pages: 0,
-          });
-          return;
-        } else if (query) {
+        if (query) {
           try {
             let service = Query.parseService(query);
             await this.renderServiceFromQuery(req, res, service);
@@ -561,6 +580,15 @@ export default class Query {
     });
 
     express.on("upgrade", (request, socket, head) => {
+      // browsers send Origin on every websocket handshake and never ask CORS first
+      if (
+        !this.isRequestAllowed(request.headers.origin, request.headers.host)
+      ) {
+        socket.end(
+          "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+        );
+        return;
+      }
       websocketServer.handleUpgrade(request, socket, head, (websocket) => {
         websocketServer.emit("connection", websocket, request);
       });
@@ -702,48 +730,54 @@ export default class Query {
     return this.server;
   }
 
-  static bindFilters(model: Model, filters: Filters): Model {
-    let operators: {
-      [k: string]: (key: string, value: any, model: Model) => void;
-    };
-    operators = {
-      ">": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} > ${value}`);
-      },
-      "<": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} < ${value}`);
-      },
-      "==": (key: string, value: any, model: Model) => {
-        model.where({ [key]: value });
-      },
-      "=": (key: string, value: any, model: Model) => {
-        operators["=="](key, value, model);
-      },
-      "!=": (key: string, value: any, model: Model) => {
-        model.whereRaw(`${key} != ${value}`);
-      },
-      NULL: (key: string, value: any, model: Model) => {
-        model.whereColIsNull<string>(key);
-      },
-      NOTNULL: (key: string, value: any, model: Model) => {
-        model.whereColIsNotNull<string>(key);
-      },
-      MATCHES: (key: string, value: any, model: Model) => {
-        model.whereColumns(key).matches(value);
-      },
-      LIKES: (key: string, value: any, model: Model) => {
-        model.where(key).like(`%${value}%`);
-      },
-      NOT: (key: string, value: any, model: Model) => {
-        model.where(key).notLike("%$value%");
-      },
-    };
-    for (let key in filters) {
-      let filter = filters[key];
-      let value = filter.vl ?? null;
-      let operator = filter.op;
+  // `ft` comes straight from the client. A column the controller hides must not
+  // be filterable either, or its value can be read back one comparison at a time.
+  static bindFilters(
+    model: Model,
+    filters: Filters,
+    rules: { exclude?: string[]; filterable?: string[] } = {}
+  ): Model {
+    if (!isPlainObject(filters)) throw new InvalidQueryError();
 
-      operators[operator](key, value, model);
+    // column names are case-insensitive in MySQL
+    const names = (columns?: string[]) =>
+      (columns ?? []).map((column) => String(column).trim().toLowerCase());
+    const hidden = names(rules?.exclude);
+    const allowed = rules?.filterable ? names(rules.filterable) : null;
+
+    const operators: { [k: string]: (value: any) => any } = {
+      ">": (value) => ({ [Op.gt]: value }),
+      "<": (value) => ({ [Op.lt]: value }),
+      "==": (value) => value,
+      "=": (value) => value,
+      "!=": (value) => ({ [Op.ne]: value }),
+      NULL: () => ({ [Op.is]: null }),
+      NOTNULL: () => ({ [Op.not]: null }),
+      LIKES: (value) => ({ [Op.like]: `%${value}%` }),
+      NOT: (value) => ({ [Op.notLike]: `%${value}%` }),
+      // accepted for older clients, never implemented
+      MATCHES: () => undefined,
+    };
+
+    for (const key of Object.keys(filters)) {
+      const filter = filters[key];
+      const column = key.toLowerCase();
+      const value = filter?.vl ?? null;
+
+      if (
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ||
+        hidden.includes(column) ||
+        (allowed && !allowed.includes(column)) ||
+        !isPlainObject(filter) ||
+        typeof filter.op != "string" ||
+        !Object.prototype.hasOwnProperty.call(operators, filter.op) ||
+        (value !== null &&
+          !["string", "number", "boolean"].includes(typeof value))
+      )
+        throw new InvalidQueryError();
+
+      const clause = operators[filter.op](value);
+      if (clause !== undefined) model.where({ [key]: clause } as any);
     }
 
     return model;

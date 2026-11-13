@@ -6,6 +6,7 @@ import validate from "../middleware/validate";
 import Controller from "../graph/controller";
 import "reflect-metadata";
 import { Model } from "@avanda/orm";
+import { expose } from "./exposed";
 
 export const streamableMetadataKey = "avanda:streamable";
 
@@ -16,6 +17,7 @@ export default function (props: StreamableProps = {}): any {
     descriptor: PropertyDescriptor
   ) {
     Reflect.defineMetadata(streamableMetadataKey, props, target, propertyKey);
+    expose(target, propertyKey);
 
     const originalMethod = descriptor.value;
 
